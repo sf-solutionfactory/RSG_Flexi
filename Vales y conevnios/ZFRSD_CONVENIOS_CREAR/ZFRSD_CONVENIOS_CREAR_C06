@@ -1,0 +1,64 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C06
+*&---------------------------------------------------------------------*
+CLASS cls_excel DEFINITION.
+  PUBLIC SECTION.
+    DATA: it_data TYPE STANDARD TABLE OF ty_excel,
+          it_cert TYPE STANDARD TABLE OF ty_certs,
+          tipo    TYPE char01.
+
+    METHODS: upload_excel IMPORTING filename     TYPE rlgrap-filename
+                          RETURNING VALUE(error) TYPE char01.
+ENDCLASS.
+CLASS cls_excel IMPLEMENTATION.
+  METHOD upload_excel.
+    DATA: lv_filename TYPE string.
+    lv_filename = filename.
+
+    IF lv_filename IS NOT INITIAL.
+      DATA: it_raw    TYPE truxs_t_text_data,
+            lv_len    TYPE i,
+            lv_ext(4) TYPE c.
+
+      lv_len = strlen( lv_filename ).
+      SUBTRACT 4 FROM lv_len.
+      lv_ext = lv_filename+lv_len(4).
+      TRANSLATE lv_ext TO UPPER CASE.
+
+      IF lv_ext EQ '.XLS' OR lv_ext EQ 'XLSX'.
+
+        IF tipo IS INITIAL.
+          CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+            EXPORTING
+              i_line_header        = 'X'
+              i_tab_raw_data       = it_raw
+              i_filename           = filename
+            TABLES
+              i_tab_converted_data = it_data
+            EXCEPTIONS
+              conversion_failed    = 1
+              OTHERS               = 2.
+        ELSE.
+          CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+            EXPORTING
+              i_line_header        = 'X'
+              i_tab_raw_data       = it_raw
+              i_filename           = filename
+            TABLES
+              i_tab_converted_data = it_cert
+            EXCEPTIONS
+              conversion_failed    = 1
+              OTHERS               = 2.
+        ENDIF.
+        IF sy-subrc <> 0.
+          error = 'X'.
+        ENDIF.
+      ELSE.
+        error = 'X'.
+*        MESSAGE 'Seleccione un archivo válido' TYPE 'E'.
+        MESSAGE e103.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+ENDCLASS.

@@ -1,0 +1,340 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C02
+*&---------------------------------------------------------------------*
+
+CLASS cls_manu DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_manu.
+
+    DATA: it_data          TYPE STANDARD TABLE OF ty_manu,
+          ls_data_selected TYPE ty_manu,
+          tab              TYPE fieldname,
+          edit             TYPE c.
+
+    METHODS:
+      get_data,                                       "Inicializa tabla
+      set_data IMPORTING folio TYPE zfr_convfolio     "Carga datos
+                         gjahr TYPE gjahr,
+      set_certs IMPORTING lt_tab       TYPE STANDARD TABLE
+                RETURNING VALUE(error) TYPE char01,
+      alv_mostrar IMPORTING contenedor TYPE c
+                            parent     TYPE REF TO cl_gui_container OPTIONAL, "Mostrar ALV
+      destroy,
+      validar_tabla,
+      get_num RETURNING VALUE(num) TYPE zfr_certnum,
+      get_val RETURNING VALUE(num) TYPE wrbtr,
+      """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+****       MANEJAODRES DE EVENTOS
+*      handle_before_user_command REDEFINITION,
+*      handle_button_click REDEFINITION,
+*      handle_double_click REDEFINITION,
+*      handle_onf4 REDEFINITION,
+*      handle_toolbar REDEFINITION,
+      handle_user_command REDEFINITION,
+      handle_data_changed_finished REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_insert,
+      row_delete,
+      data_select,
+      data_makeup.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_manu IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD get_data.
+    CLEAR it_data.
+
+    CALL METHOD data_select.
+    CALL METHOD data_makeup.
+    edit = abap_true.
+  ENDMETHOD.                    "get_data
+
+  METHOD set_data.
+    DATA: lt_temp TYPE STANDARD TABLE OF zfr_convenio,
+          lt_cant TYPE STANDARD TABLE OF ty_manu,
+          ls_data TYPE ty_manu,
+          ls_temp TYPE ty_manu,
+          lv_cont TYPE i VALUE 1.
+    FIELD-SYMBOLS: <ls_data> TYPE zfr_convenio,
+                   <ls_temp> TYPE ty_manu.
+
+    SELECT * FROM zfr_convenio INTO TABLE lt_temp
+      WHERE convenio EQ folio
+        AND convgjhr EQ gjahr.
+
+    IF sy-subrc EQ 0.
+      READ TABLE lt_temp ASSIGNING <ls_data> INDEX 1.
+      IF sy-subrc EQ 0.
+        gv_certc_datab = <ls_data>-datab.
+        gv_certc_datbi = <ls_data>-datbi.
+      ENDIF.
+      FREE ls_data.
+    ENDIF.
+
+    LOOP AT lt_temp ASSIGNING <ls_data>.
+      <ls_data>-cert_num = <ls_data>-cert_num + <ls_data>-vale_num.
+      <ls_data>-cert_val = <ls_data>-cert_val + <ls_data>-vale_val.
+      MOVE-CORRESPONDING <ls_data> TO ls_data.
+
+      READ TABLE it_data INTO ls_temp WITH KEY cert_val = ls_data-cert_val.
+      IF sy-subrc EQ 0.
+        ls_data-posnr = ls_temp-posnr.
+      ELSE.
+        ls_data-posnr = lv_cont.
+        ADD 1 TO lv_cont.
+      ENDIF.
+
+      APPEND ls_data TO it_data.
+    ENDLOOP.
+
+    LOOP AT it_data INTO  ls_temp.
+      READ TABLE lt_cant ASSIGNING <ls_temp> WITH KEY posnr = ls_temp-posnr.
+      IF sy-subrc EQ 0 AND ls_temp-cert_folio IS INITIAL.
+        <ls_temp>-cert_num = ls_temp-cert_num + <ls_temp>-cert_num.
+      ELSE.
+        APPEND ls_temp TO lt_cant.
+      ENDIF.
+    ENDLOOP.
+
+    it_data[] = lt_cant[].
+    edit = abap_false.
+  ENDMETHOD.                    "set_data
+
+  METHOD set_certs.
+    DATA: lt_cert TYPE STANDARD TABLE OF zfr_convenio,
+          ls_cert TYPE zfr_convenio,
+          ls_data TYPE ty_manu.
+    lt_cert[] = lt_tab[].
+
+    DELETE it_data WHERE folio IS INITIAL.
+    LOOP AT lt_cert INTO ls_cert.
+      READ TABLE it_data INTO ls_data WITH KEY folio = ls_cert-folio
+                                               cert_folio = ls_cert-cert_folio.
+      IF sy-subrc NE 0.
+        ls_data-folio = ls_cert-folio.
+        ls_data-cert_folio = ls_cert-cert_folio.
+        ls_data-cert_num = 1.
+        ls_data-cert_val = ls_cert-cert_val.
+        APPEND ls_data TO it_data.
+      ENDIF.
+    ENDLOOP.
+    edit = 'C'.
+  ENDMETHOD.
+
+  METHOD data_select.
+    DO 1 TIMES.
+      APPEND ls_data_selected TO it_data.
+    ENDDO.
+  ENDMETHOD.                    "data_select
+
+  METHOD data_makeup.
+  ENDMETHOD.                    "data_makeup
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          parent         = parent
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: ls_fcat   TYPE lvc_s_fcat,
+          lt_fcat   TYPE STANDARD TABLE OF lvc_s_fcat,
+          lv_colpos TYPE i.
+
+    CLEAR ls_fcat.
+    ls_fcat-fieldname = 'ICON'.
+    ls_fcat-col_pos = 0.
+    ls_fcat-outputlen = 2.
+    ls_fcat-edit = abap_false.
+    ls_fcat-icon = abap_true.
+    APPEND ls_fcat TO t_fcat.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVENIO'
+*       I_CLIENT_NEVER_DISPLAY = abap_true
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    IF sy-subrc EQ 0.
+      LOOP AT lt_fcat INTO ls_fcat.
+*      ls_fcat-col_opt = abap_true.
+        ls_fcat-edit = edit.
+        ls_fcat-lowercase = abap_true.
+
+        CASE ls_fcat-fieldname.
+          WHEN 'CERT_NUM'.
+            ls_fcat-outputlen  = 8.
+            ls_fcat-coltext    = TEXT-mng. "Cantidad
+            ls_fcat-no_zero     = abap_true.
+            ls_fcat-col_pos    = 2.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'CERT_VAL'.
+            ls_fcat-col_pos = 5.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'CERT_FOLIO'.
+            ls_fcat-col_pos = 6.
+            APPEND ls_fcat TO t_fcat.
+          WHEN OTHERS.
+        ENDCASE.
+        ADD 1 TO lv_colpos.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.                    "armar_fieldcat
+
+  METHOD row_insert.
+    DATA: ls_data TYPE ty_manu.
+    ADD 1 TO gv_line.
+    APPEND ls_data TO it_data.
+    CALL METHOD refresh.
+  ENDMETHOD.                    "ROW_INSERT
+
+  METHOD row_delete.
+    DATA: lt_rows  TYPE lvc_t_roid,
+          ls_row   TYPE lvc_s_roid,
+          ls_data  TYPE ty_manu,
+          lv_index TYPE i.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+*      MESSAGE 'Seleccione al menos una linea' TYPE 'S'.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        ls_data-icon = c_delete.
+        MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+        IF obj_certs IS BOUND.
+          DATA: ls_cert TYPE zfr_convenio.
+          READ TABLE obj_certs->it_copiados INTO ls_cert WITH KEY folio = ls_data-folio
+                                                                  cert_folio = ls_data-cert_folio.
+          IF sy-subrc EQ 0.
+            lv_index = sy-tabix.
+            DELETE obj_certs->it_copiados INDEX lv_index.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+
+      DELETE it_data WHERE icon EQ c_delete.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+  ENDMETHOD.                    "ROW_DELETE
+
+  METHOD handle_user_command.
+    IF edit IS NOT INITIAL.
+      CASE e_ucomm.
+        WHEN 'INSERT_ROW'.
+          IF edit EQ abap_true.
+            CALL METHOD row_insert.
+          ENDIF.
+        WHEN 'DELETE_ROW'.
+          CALL METHOD row_delete.
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.                    "handle_user_command
+  METHOD handle_data_changed_finished.
+    DATA: ls_cell LIKE LINE OF et_good_cells,
+          ls_data TYPE ty_manu.
+
+    IF e_modified = abap_true.
+      LOOP AT et_good_cells INTO ls_cell.
+        READ TABLE it_data INTO ls_data INDEX ls_cell-row_id. "Leemos tabla vista
+        CLEAR ls_data-icon.
+        IF ls_data-cert_num LE 0.
+          ls_data-icon = c_red.
+*          MESSAGE 'Ingrese un valor mayor a cero.' TYPE 'S' DISPLAY LIKE 'E'.
+          MESSAGE s011 DISPLAY LIKE 'E'.
+        ENDIF.
+        IF ls_data-cert_val LE 0.
+          ls_data-icon = c_red.
+*          MESSAGE 'Ingrese un valor mayor a cero.' TYPE 'S' DISPLAY LIKE 'E'.
+          MESSAGE s011 DISPLAY LIKE 'E'.
+        ENDIF.
+
+        MODIFY it_data FROM ls_data INDEX ls_cell-row_id.
+      ENDLOOP.
+
+      refresh( ).
+    ENDIF.
+  ENDMETHOD.                    "HANDLE_DATA_CHANGED_FINISHED
+
+  METHOD destroy.
+    CALL METHOD v_alv->free.
+  ENDMETHOD.
+
+  METHOD validar_tabla.
+    DATA ls_tab TYPE ty_manu.
+
+    LOOP AT it_data INTO ls_tab.
+      CLEAR ls_tab-icon.
+      IF ls_tab-cert_num IS INITIAL OR ls_tab-cert_val IS INITIAL.
+        ls_tab-icon = c_red.
+      ENDIF.
+      MODIFY it_data FROM ls_tab.
+    ENDLOOP.
+
+    refresh( ).
+  ENDMETHOD.
+
+  METHOD get_num.
+    DATA ls_tab TYPE ty_manu.
+
+    LOOP AT it_data INTO ls_tab.
+      ADD ls_tab-cert_num TO num.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_val.
+    DATA: ls_tab TYPE ty_manu,
+          lv_num TYPE wrbtr.
+
+    LOOP AT it_data INTO ls_tab.
+      lv_num = ls_tab-cert_num * ls_tab-cert_val.
+      ADD lv_num TO num.
+    ENDLOOP.
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

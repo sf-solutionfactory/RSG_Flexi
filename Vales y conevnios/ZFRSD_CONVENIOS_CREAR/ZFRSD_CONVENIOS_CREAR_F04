@@ -1,0 +1,146 @@
+*----------------------------------------------------------------------*
+***INCLUDE ZFRSD_CONVENIOS_CREAR_F02.
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Module STATUS_0300 OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE status_0400 OUTPUT.
+  SET PF-STATUS 'ST400'.
+  SET TITLEBAR 'T400'.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module SHOW_ALV OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE show_alv_ct OUTPUT.
+  IF obj_certs IS NOT BOUND .
+    CREATE OBJECT obj_certs.
+    obj_certs->parent = obj_tconvenio->container->screen1.
+    obj_certs->get_data( ).
+  ENDIF.
+
+  obj_certs->alv_mostrar( parent = obj_certs->parent
+  contenedor = 'CC_CERTEXT').
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0300  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0400 INPUT.
+  CASE gv_ok_codet.
+    WHEN 'BTN_CARGA'.
+      PERFORM f_carga_cert.
+    WHEN 'OK'.
+      PERFORM f_copia_cert.
+    WHEN 'CANCEL'.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Form F_CARGA_CERT
+*&---------------------------------------------------------------------*
+*& Carga el excel y genera certificados
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_carga_cert .
+  DATA: lv_excel TYPE REF TO cls_excel,
+        lv_ban   TYPE c.
+
+  CREATE OBJECT lv_excel.
+  lv_excel->tipo = 'C'.
+
+  IF rlgrap-filename IS INITIAL.
+    lv_ban = 'X'.
+    MESSAGE s103 DISPLAY LIKE 'E'.
+  ELSE.
+    lv_ban = lv_excel->upload_excel( rlgrap-filename ).
+  ENDIF.
+
+  IF lv_ban IS INITIAL.
+    DATA: lt_certs TYPE STANDARD TABLE OF ty_certs,
+          ls_certs TYPE ty_certs,
+          lt_kunnr TYPE STANDARD TABLE OF kunnr_sty,
+          ls_kunnr TYPE kunnr_sty.
+    FIELD-SYMBOLS <fs_cert> TYPE ty_certs.
+    lt_certs[] = lv_excel->it_cert[].
+
+    IF lt_certs IS NOT INITIAL.
+      LOOP AT lt_certs ASSIGNING <fs_cert> WHERE cliente IS NOT INITIAL.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+          EXPORTING
+            input  = <fs_cert>-cliente
+          IMPORTING
+            output = <fs_cert>-cliente.
+        ls_kunnr-kunnr = <fs_cert>-cliente.
+        APPEND ls_kunnr TO lt_kunnr.
+      ENDLOOP.
+
+      SORT lt_kunnr.
+      DELETE ADJACENT DUPLICATES FROM lt_kunnr.
+      SELECT kunnr FROM kna1 INTO TABLE @DATA(lt_kna1)
+        FOR ALL ENTRIES IN @lt_kunnr
+        WHERE kunnr EQ @lt_kunnr-kunnr.
+
+      LOOP AT lt_certs INTO ls_certs.
+        lv_ban = ''.
+        IF ls_certs-cliente IS NOT INITIAL.
+          READ TABLE lt_kna1 TRANSPORTING NO FIELDS WITH KEY kunnr = ls_certs-cliente.
+          IF sy-subrc NE 0.
+            lv_ban = 'X'.
+          ENDIF.
+        ENDIF.
+        IF lv_ban IS INITIAL.
+          DATA: lv_cert TYPE REF TO cls_convenio,
+                ls_cert TYPE zfr_convenio.
+          CREATE OBJECT lv_cert.
+
+          ls_cert-gjahr = sy-datum+0(4).
+          ls_cert-kunnr = ls_certs-cliente.
+          ls_cert-cert_folio = ls_certs-folio.
+          ls_cert-cert_ext = 'X'.
+          ls_cert-type = gv_cert.
+          lv_cert->set_info( ls_cert ).
+
+          lv_cert->set_folio( ).
+          lv_cert->save_conv( ).
+        ENDIF.
+      ENDLOOP.
+
+      obj_certs->get_data( ).
+      obj_certs->refresh( ).
+    ENDIF.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form F_COPIA_CERT
+*&---------------------------------------------------------------------*
+*& Copia lineas seleccionadas a pantalla principal
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_copia_cert .
+  DATA: lv_ban TYPE c.
+  lv_ban = obj_certs->copia_cert( ).
+
+  IF lv_ban IS INITIAL AND gv_cert_imp IS NOT INITIAL.
+    obj_certs->get_data( ).
+    LEAVE TO SCREEN 0.
+  ELSEIF lv_ban IS NOT INITIAL.
+    obj_certs->get_data( ).
+    LEAVE TO SCREEN 0.
+  ENDIF.
+  IF gv_cert_imp IS INITIAL.
+    gv_cert_imp = gv_cert_temp.
+  ENDIF.
+ENDFORM.

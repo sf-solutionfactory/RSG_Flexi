@@ -1,0 +1,450 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C01
+*&---------------------------------------------------------------------*
+CLASS lcl_main DEFINITION." CREATE PRIVATE.
+
+  PUBLIC SECTION.
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO lcl_main.
+
+    METHODS:
+      run,
+      new_convenio,
+      new_cert,
+      new_vale,
+      cert_equal,
+      vale_equal,
+      update.
+    .
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+    METHODS:
+      initialize,
+      get_stvarv RETURNING VALUE(error) TYPE char01,
+      get_tpar IMPORTING im_parvw   TYPE parvw
+               RETURNING VALUE(ret) TYPE char01.
+
+ENDCLASS.
+
+CLASS lcl_main IMPLEMENTATION.
+
+  METHOD create.
+
+    CREATE OBJECT r_result.
+
+  ENDMETHOD.
+
+  METHOD initialize.
+    DATA: lv_folio TYPE zfr_convfolio.
+    lv_folio = zfr_convenio-folio.
+
+    IF zfr_convenio-cert_man IS NOT INITIAL.
+      obj_tcert_man->get_data( ).
+      obj_tcert_man->refresh( ).
+    ENDIF.
+    IF zfr_convenio-vale_man IS NOT INITIAL.
+      obj_tvale_man->get_data( ).
+      obj_tvale_man->refresh( ).
+    ENDIF.
+
+    CLEAR: zfr_convenio,
+           gv_cert_datab, gv_cert_datbi,
+           gv_vale_datab, gv_vale_datbi,
+           gv_print.
+
+
+    obj_tconvenio->get_data( ).
+    obj_tconvenio->refresh( ).
+
+    obj_tcertific->get_data( ).
+    obj_tcertific->refresh( ).
+
+    obj_tvales->get_data( ).
+    obj_tvales->refresh( ).
+
+    zfr_convenio-gjahr = sy-datum+0(4).
+    zfr_convenio-folio = lv_folio.
+
+    get_stvarv( ).
+    LOOP AT it_knvp INTO DATA(ls_knvp).
+      DATA: lv_parvw TYPE parvw.
+      lv_parvw = ls_knvp-low.
+      get_tpar( lv_parvw ).
+      DELETE it_tpar WHERE parvw EQ lv_parvw.
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD run.
+
+    CREATE OBJECT obj_tconvenio.
+    obj_tconvenio->get_data( ).
+    obj_tconvenio->alv_mostrar( contenedor = 'CC_CONV').
+
+    CREATE OBJECT obj_tcertific.
+    obj_tcertific->get_data( ).
+    obj_tcertific->alv_mostrar( contenedor = 'CC_CERT').
+
+    CREATE OBJECT obj_tvales.
+    obj_tvales->get_data( ).
+    obj_tvales->alv_mostrar( contenedor = 'CC_VALE').
+
+
+    CREATE OBJECT obj_data.
+    obj_data->alv_mostrar( contenedor = 'CC_CONSULTA').
+
+    CREATE OBJECT obj_tiendas.
+    obj_tiendas->get_data( ).
+    CREATE OBJECT obj_ventas.
+    obj_ventas->get_data( ).
+
+    initialize( ).
+
+    obj_data->gen_xml2( ).
+
+  ENDMETHOD.
+
+  METHOD new_convenio.
+    DATA: ls_conv TYPE zfr_convenio,
+          lv_conv TYPE REF TO cls_convenio,
+          lv_ban  TYPE c.
+
+    MOVE-CORRESPONDING zfr_convenio TO ls_conv.
+    ls_conv-type        = gv_conv.
+    CLEAR: ls_conv-cert_add, ls_conv-cert_adt, ls_conv-cert_man, ls_conv-cert_num, ls_conv-cert_val.
+    CLEAR: ls_conv-vale_add, ls_conv-vale_adt, ls_conv-vale_man, ls_conv-vale_num, ls_conv-vale_val.
+
+    CREATE OBJECT lv_conv.
+    lv_conv->init_info( ls_conv ).
+
+    obj_tconvenio->validar_tabla( ).
+
+    lv_conv->set_cond( obj_tconvenio->it_data ).
+
+    IF lv_ban IS INITIAL.
+      lv_conv->set_tiendas( tienda = zfr_conva-werks
+                            lt_werk = obj_tiendas->it_data ).
+      lv_ban = lv_conv->validar_tiendas( ).
+    ENDIF.
+    IF lv_ban IS INITIAL.
+      lv_conv->set_ventas( vkorg = zfr_convenio-vkorg
+                            lt_vkorg = obj_ventas->it_data ).
+      lv_ban = lv_conv->validar_ventas( ).
+    ENDIF.
+
+    IF lv_ban IS INITIAL.
+      lv_ban = lv_conv->validar_convenio( ls_conv-type ).
+    ENDIF.
+
+    IF lv_ban IS INITIAL.
+      DATA: lv_excel TYPE REF TO cls_excel.
+      CREATE OBJECT lv_excel.
+      lv_ban = lv_excel->upload_excel( rlgrap-filename ).
+
+      IF lv_ban IS INITIAL.
+        lv_conv->set_bene( EXPORTING im_new  = 'X'
+                                     lt_bene = lv_excel->it_data ).
+      ENDIF.
+    ENDIF.
+
+    IF lv_ban IS INITIAL.
+      lv_conv->set_folio( ).
+      lv_ban = lv_conv->save_conv( ).
+
+      IF lv_ban IS INITIAL .
+        zfr_convenio-folio = lv_conv->gs_info-folio.
+        MESSAGE s100 WITH lv_conv->gs_info-folio.
+
+        initialize( ).
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD new_cert.
+    DATA: ls_conv TYPE zfr_convenio,
+          lv_cert TYPE REF TO cls_convenio,
+          lv_ban  TYPE c.
+
+    MOVE-CORRESPONDING zfr_convenio TO ls_conv.
+    ls_conv-type        = gv_conv.
+    ls_conv-desc_type   = zfr_convenio-cert_adt.
+    ls_conv-datab       = gv_cert_datab.
+    ls_conv-datbi       = gv_cert_datbi.
+**    CLEAR: ls_conv-cert_add, ls_conv-cert_adt, ls_conv-cert_man, ls_conv-cert_num, ls_conv-cert_val.
+    CLEAR: ls_conv-vale_add, ls_conv-vale_adt, ls_conv-vale_man, ls_conv-vale_num, ls_conv-vale_val.
+
+
+    CREATE OBJECT lv_cert.
+    lv_cert->init_info( ls_conv ).
+
+    obj_tcertific->validar_tabla( ).
+
+    lv_cert->set_cond( obj_tcertific->it_data ).
+    lv_ban = lv_cert->validar_convenio( gv_cert ).
+
+
+    IF lv_ban IS INITIAL.
+      IF lv_cert->gs_info-cert_man IS NOT INITIAL.                   "VALIDA DISTRIBUCIÓN MANUAL
+        obj_tcert_man->validar_tabla( ).
+        lv_cert->set_manu( obj_tcert_man->it_data ).
+      ENDIF.
+
+      IF lv_ban IS INITIAL.
+        lv_cert->set_tiendas( tienda = zfr_conva-werks
+                              lt_werk = obj_tiendas->it_data ).
+        lv_ban = lv_cert->validar_tiendas( ).
+      ENDIF.
+      IF lv_ban IS INITIAL.
+        lv_cert->set_ventas( vkorg = zfr_convenio-vkorg
+                              lt_vkorg = obj_ventas->it_data ).
+        lv_ban = lv_cert->validar_ventas( ).
+      ENDIF.
+
+      IF lv_ban IS INITIAL.
+        lv_ban = lv_cert->validar_cert( ).
+      ENDIF.
+
+      IF lv_ban IS INITIAL.
+        lv_cert->set_rela_cert( ).
+
+        lv_cert->set_folio( ).
+        lv_cert->set_type( gv_cert ).
+        lv_ban = lv_cert->save_conv( ).
+
+        IF lv_ban IS INITIAL .
+          IF gv_print IS NOT INITIAL.
+            lv_cert->imprimir( ).
+          ENDIF.
+          zfr_convenio-folio = lv_cert->gs_info-folio.
+          MESSAGE s101 WITH lv_cert->gs_info-folio.
+
+          initialize( ).
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD new_vale.
+    DATA: ls_conv TYPE zfr_convenio,
+          lv_vale TYPE REF TO cls_convenio,
+          lv_ban  TYPE c.
+
+    MOVE-CORRESPONDING zfr_convenio TO ls_conv.
+    ls_conv-type        = gv_conv.
+    ls_conv-desc_type   = zfr_convenio-vale_adt.
+    ls_conv-datab       = gv_vale_datab.
+    ls_conv-datbi       = gv_vale_datbi.
+    CLEAR: ls_conv-cert_add, ls_conv-cert_adt, ls_conv-cert_man, ls_conv-cert_num, ls_conv-cert_val.
+**    CLEAR: ls_conv-vale_add, ls_conv-vale_adt, ls_conv-vale_man, ls_conv-vale_num, ls_conv-vale_val.
+
+    CREATE OBJECT lv_vale.
+    lv_vale->init_info( ls_conv ).
+
+    obj_tvales->validar_tabla( ).
+
+    lv_vale->set_cond( obj_tvales->it_data ).
+    lv_ban = lv_vale->validar_convenio( gv_vale ).
+
+
+    IF lv_ban IS INITIAL.
+      IF lv_vale->gs_info-vale_man IS NOT INITIAL.                   "VALIDA DISTRIBUCIÓN MANUAL
+        obj_tvale_man->validar_tabla( ).
+        lv_vale->set_manu( obj_tvale_man->it_data ).
+      ENDIF.
+      IF lv_ban IS INITIAL.
+        lv_vale->set_tiendas( tienda = zfr_conva-werks
+                              lt_werk = obj_tiendas->it_data ).
+        lv_ban = lv_vale->validar_tiendas( ).
+      ENDIF.
+      IF lv_ban IS INITIAL.
+        lv_vale->set_ventas( vkorg = zfr_convenio-vkorg
+                              lt_vkorg = obj_ventas->it_data ).
+        lv_ban = lv_vale->validar_ventas( ).
+      ENDIF.
+
+
+      IF lv_ban IS INITIAL.
+        lv_ban = lv_vale->validar_vale( ).
+      ENDIF.
+
+      IF lv_ban IS INITIAL.
+        DATA: lv_excel TYPE REF TO cls_excel.
+        CREATE OBJECT lv_excel.
+        lv_ban = lv_excel->upload_excel( rlgrap-filename ).
+
+        IF lv_ban IS INITIAL.
+          lv_vale->set_bene( EXPORTING im_new  = 'X'
+                                       lt_bene = lv_excel->it_data ).
+        ENDIF.
+      ENDIF.
+
+      IF lv_ban IS INITIAL.
+        lv_vale->set_rela_vale( ).
+
+        lv_vale->set_folio( ).
+        lv_vale->set_type( gv_vale ).
+        lv_ban = lv_vale->save_conv( ).
+
+        IF lv_ban IS INITIAL .
+          IF gv_print IS NOT INITIAL.
+            lv_vale->imprimir( ).
+          ENDIF.
+          zfr_convenio-folio = lv_vale->gs_info-folio.
+          MESSAGE s102 WITH lv_vale->gs_info-folio.
+
+          initialize( ).
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD cert_equal.
+    DATA: ls_data   TYPE ty_manu,
+          ls_data_t TYPE ty_manu,
+          lv_temp   TYPE wrbtr.
+    LOOP AT obj_tcert_man->it_data INTO ls_data_t.
+      CLEAR lv_temp.
+      ADD ls_data_t-cert_num TO ls_data-cert_num.
+      lv_temp = ls_data_t-cert_num * ls_data_t-cert_val.
+      ADD lv_temp TO ls_data-cert_val.
+
+    ENDLOOP.
+    zfr_convenio-cert_num = ls_data-cert_num.
+    zfr_convenio-cert_val = ls_data-cert_val.
+
+  ENDMETHOD.
+
+  METHOD vale_equal.
+    DATA: ls_data   TYPE ty_manu,
+          ls_data_t TYPE ty_manu,
+          lv_temp   TYPE wrbtr.
+    LOOP AT obj_tvale_man->it_data INTO ls_data_t.
+      ADD ls_data_t-cert_num TO ls_data-cert_num.
+      lv_temp = ls_data_t-cert_num * ls_data_t-cert_val.
+      ADD lv_temp TO ls_data-cert_val.
+    ENDLOOP.
+
+    zfr_convenio-vale_num = ls_data-cert_num.
+    zfr_convenio-vale_val = ls_data-cert_val.
+  ENDMETHOD.
+
+  METHOD update.
+    DATA: ls_conv TYPE zfr_convenio.
+    SELECT SINGLE * FROM zfr_convenio
+       INTO ls_conv
+      WHERE folio EQ zfr_convenio-folio
+        AND gjahr EQ zfr_convenio-gjahr.
+    IF sy-subrc EQ 0.
+      IF NOT ( sy-datum GE ls_conv-datab AND sy-datum LE ls_conv-datbi ).
+        MESSAGE w105 WITH ls_conv-datab ls_conv-datbi.
+      ENDIF.
+    ENDIF.
+    SUBMIT zfrsd_convenios_modificar
+      WITH p_folio EQ zfr_convenio-folio
+      WITH p_gjahr EQ zfr_convenio-gjahr
+    AND RETURN.
+  ENDMETHOD.
+
+  METHOD get_stvarv.
+    DATA: lt_tvarv TYPE STANDARD TABLE OF tvarvc,
+          ls_tvarv TYPE tvarvc.
+    CLEAR: lt_tvarv,
+           it_bupa,
+           it_knvp,
+           it_newbp.
+
+    SELECT * FROM tvarvc INTO TABLE lt_tvarv
+      WHERE name EQ 'ZFR_CONVENIOS-CONVTYPE'.
+    IF sy-subrc EQ 0.
+      READ TABLE lt_tvarv INTO ls_tvarv WITH KEY low = 'CONV'.
+      IF sy-subrc EQ 0.
+        gv_conv = ls_tvarv-high.
+      ENDIF.
+      IF  gv_conv IS INITIAL.
+        error = abap_true.
+      ENDIF.
+
+      READ TABLE lt_tvarv INTO ls_tvarv WITH KEY low = 'CERT'.
+      IF sy-subrc EQ 0.
+        gv_cert = ls_tvarv-high.
+      ENDIF.
+      IF  gv_cert IS INITIAL.
+        error = abap_true.
+      ENDIF.
+
+      READ TABLE lt_tvarv INTO ls_tvarv WITH KEY low = 'VALE'.
+      IF sy-subrc EQ 0.
+        gv_vale = ls_tvarv-high.
+      ENDIF.
+      IF  gv_vale IS INITIAL.
+        error = abap_true.
+      ENDIF.
+    ENDIF.
+
+    SELECT * FROM tvarvc INTO TABLE lt_tvarv
+      WHERE name EQ 'ZFR_CONVENIOS-NEW_BP'.
+    IF sy-subrc EQ 0.
+      APPEND LINES OF lt_tvarv TO it_newbp.
+    ENDIF.
+
+    SELECT * FROM tvarvc INTO TABLE lt_tvarv
+      WHERE name EQ 'ZFR_CONVENIOS-BUPA'.
+    IF sy-subrc EQ 0.
+      APPEND LINES OF lt_tvarv TO it_bupa.
+    ENDIF.
+
+    SELECT * FROM tvarvc INTO TABLE lt_tvarv
+      WHERE name EQ 'ZFR_CONVENIOS-KNVP'.
+    IF sy-subrc EQ 0.
+      APPEND LINES OF lt_tvarv TO it_knvp.
+    ENDIF.
+
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'VTWEG'.
+    IF sy-subrc EQ 0.
+      gv_vtweg = ls_tvarv-high.
+    ENDIF.
+    IF gv_vtweg IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'SPART'.
+    IF sy-subrc EQ 0.
+      gv_spart = ls_tvarv-high.
+    ENDIF.
+    IF gv_spart IS INITIAL.
+      error = abap_true.
+    ENDIF.
+
+    SELECT * FROM tvarvc INTO TABLE lt_tvarv
+      WHERE name EQ 'ZFR_CONVENIOS-CUSTHITYP'.
+    IF sy-subrc EQ 0.
+      READ TABLE lt_tvarv INTO ls_tvarv INDEX 1.
+      IF sy-subrc EQ 0.
+        gv_custhityp = ls_tvarv-low.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_tpar.
+    DATA: lt_tpar TYPE STANDARD TABLE OF tpar,
+          ls_tpar TYPE tpar.
+
+    SELECT * FROM tpar INTO TABLE lt_tpar
+      WHERE parvw EQ im_parvw.
+    IF sy-subrc EQ 0.
+      APPEND LINES OF lt_tpar TO it_tpar.
+
+      LOOP AT lt_tpar INTO ls_tpar.
+        IF ls_tpar-uparv IS NOT INITIAL.
+          ret = get_tpar( ls_tpar-uparv ).
+        ELSE.
+          ret = abap_true.
+        ENDIF.
+        IF ret IS NOT INITIAL.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+
+    ENDIF.
+
+  ENDMETHOD.
+ENDCLASS.

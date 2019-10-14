@@ -1,0 +1,1325 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C05
+*&---------------------------------------------------------------------*
+CLASS cls_convenio DEFINITION.
+  PUBLIC SECTION.
+    DATA: gs_info     TYPE zfr_convenio,
+          it_cond     TYPE STANDARD TABLE OF ty_cond,
+          it_manu     TYPE STANDARD TABLE OF ty_manu,
+          it_bene     TYPE STANDARD TABLE OF zfr_convb,
+          it_werk     TYPE STANDARD TABLE OF zfr_conva,
+          it_vkor     TYPE STANDARD TABLE OF zfr_convv,
+          it_rela     TYPE STANDARD TABLE OF zfr_convenio,
+          it_bdcdata  TYPE STANDARD TABLE OF bdcdata,
+          gs_consulta TYPE char01.
+    METHODS:
+      init_info IMPORTING ls_conv TYPE zfr_convenio,
+      set_info IMPORTING ls_conv TYPE zfr_convenio,
+      set_cond IMPORTING lt_cond TYPE STANDARD TABLE,
+      set_bene IMPORTING im_new  TYPE char01 OPTIONAL
+                         lt_bene TYPE STANDARD TABLE,
+      set_tiendas IMPORTING tienda  TYPE werks_d
+                            lt_werk TYPE STANDARD TABLE,
+      set_ventas IMPORTING vkorg    TYPE vkorg
+                           lt_vkorg TYPE STANDARD TABLE,
+      set_manu IMPORTING lt_manu TYPE STANDARD TABLE,
+      set_folio,
+      set_type IMPORTING tipo TYPE zfr_convtype,
+
+      set_rela IMPORTING lt_rela TYPE STANDARD TABLE,
+      set_rela_cert,
+      set_rela_vale RETURNING VALUE(error) TYPE char01,
+
+      copy_bene IMPORTING lt_bene TYPE STANDARD TABLE,
+      validar_head RETURNING VALUE(error) TYPE char01,
+      validar_convenio IMPORTING tipo         TYPE zfr_convtype
+                       RETURNING VALUE(error) TYPE char01,
+      validar_cert RETURNING VALUE(error) TYPE char01,
+      validar_vale RETURNING VALUE(error) TYPE char01,
+      validar_tiendas RETURNING VALUE(error) TYPE char01,
+      validar_ventas RETURNING VALUE(error) TYPE char01,
+      save_head RETURNING VALUE(error) TYPE char01,
+      save_conv RETURNING VALUE(error) TYPE char01,
+      save_bene RETURNING VALUE(error) TYPE char01,
+      save_rela RETURNING VALUE(error) TYPE char01,
+
+      imprimir.
+
+  PRIVATE SECTION.
+    METHODS:
+      validar_cond  IMPORTING tipo         TYPE zfr_convtype
+                    RETURNING VALUE(error) TYPE char01,
+      validar_manu  IMPORTING tipo         TYPE zfr_convtype
+                    RETURNING VALUE(error) TYPE char01,
+      save_bene_bp  RETURNING VALUE(error) TYPE char01,
+      add_sales_bp  IMPORTING im_bp        TYPE bu_partner
+                              im_num       TYPE zfr_empleado
+                    RETURNING VALUE(error) TYPE char01,
+      add_hiera  IMPORTING im_bp        TYPE bu_partner
+                           im_kn        TYPE kunnr
+                           im_vkorg     TYPE vkorg
+                           im_vtweg     TYPE vtweg
+                           im_spart     TYPE spart
+                           im_custh     TYPE hityp_kh
+                 RETURNING VALUE(error) TYPE char01,
+      dynpro IMPORTING pv_flag  TYPE char01
+                       pv_name  TYPE bdc_fval
+                       pv_value TYPE bdc_fval.
+    .
+
+ENDCLASS.
+
+CLASS cls_convenio IMPLEMENTATION.
+  METHOD init_info.
+    MOVE-CORRESPONDING ls_conv TO gs_info.
+    gs_info-cpudt       = sy-datum.
+    gs_info-cputm       = sy-uzeit.
+    gs_info-usnam       = sy-uname.
+  ENDMETHOD.
+
+  METHOD set_info.
+    MOVE-CORRESPONDING ls_conv TO gs_info.
+  ENDMETHOD.
+
+  METHOD set_cond.
+    it_cond[] = lt_cond[].
+  ENDMETHOD.
+
+  METHOD set_bene.
+    DATA: lt_excel TYPE STANDARD TABLE OF ty_excel,
+          ls_excel TYPE ty_excel,
+          ls_convb TYPE zfr_convb.
+
+    CLEAR it_bene.
+    lt_excel[] = lt_bene[].
+
+    LOOP AT lt_excel INTO ls_excel.
+      CLEAR ls_convb.
+      IF im_new IS INITIAL.
+        ls_convb-folio = gs_info-folio.
+        ls_convb-gjahr = gs_info-gjahr.
+      ENDIF.
+      ls_convb-empleado = ls_excel-empleado.
+      ls_convb-empresa = ls_excel-empresa.
+      ls_convb-nombre = ls_excel-name.
+      ls_convb-email = ls_excel-email.
+      ls_convb-phone = ls_excel-phone.
+      IF ls_excel-borrar IS NOT INITIAL.
+        ls_convb-estatus = abap_true.
+      ENDIF.
+      ls_convb-usnam = sy-uname.
+      APPEND ls_convb TO it_bene.
+    ENDLOOP.
+    SORT it_bene BY empleado.
+    DELETE ADJACENT DUPLICATES FROM it_bene COMPARING empleado.
+    DELETE it_bene WHERE empleado IS INITIAL.
+
+  ENDMETHOD.
+
+
+  METHOD set_tiendas.
+    DATA: lt_temp    TYPE STANDARD TABLE OF ty_werk,
+          ls_data    TYPE ty_werk,
+          ls_tiendas TYPE zfr_conva.
+    lt_temp[] = lt_werk[].
+
+    DELETE lt_temp WHERE werks IS INITIAL.
+    SORT lt_temp BY werks.
+    DELETE ADJACENT DUPLICATES FROM lt_temp COMPARING werks.
+
+    IF lt_temp IS NOT INITIAL.
+      LOOP AT lt_temp INTO ls_data.
+        CLEAR ls_tiendas.
+        ls_tiendas-posnr = sy-tabix.
+        ls_tiendas-werks = ls_data-werks.
+
+        APPEND ls_tiendas TO it_werk.
+      ENDLOOP.
+    ELSE.
+      CLEAR ls_tiendas.
+      ls_tiendas-posnr = 1.
+      ls_tiendas-werks = tienda.
+
+      APPEND ls_tiendas TO it_werk.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_ventas.
+    DATA: lt_temp   TYPE STANDARD TABLE OF ty_vkorg,
+          ls_data   TYPE ty_vkorg,
+          ls_ventas TYPE zfr_convv.
+    lt_temp[] = lt_vkorg[].
+
+    DELETE lt_temp WHERE vkorg IS INITIAL.
+    SORT lt_temp BY vkorg.
+    DELETE ADJACENT DUPLICATES FROM lt_temp COMPARING vkorg.
+
+    IF lt_temp IS NOT INITIAL.
+      LOOP AT lt_temp INTO ls_data.
+        CLEAR ls_ventas.
+        ls_ventas-posnr = sy-tabix.
+        ls_ventas-vkorg = ls_data-vkorg.
+
+        APPEND ls_ventas TO it_vkor.
+      ENDLOOP.
+    ELSE.
+      CLEAR ls_ventas.
+      ls_ventas-posnr = 1.
+      ls_ventas-vkorg = vkorg.
+
+      APPEND ls_ventas TO it_vkor.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_manu.
+    it_manu[] = lt_manu[].
+  ENDMETHOD.
+
+  METHOD set_rela.
+    it_rela[] = lt_rela[].
+  ENDMETHOD.
+
+  METHOD set_rela_cert.
+    DATA: ls_cert TYPE zfr_convenio,
+          ls_manu TYPE ty_manu.
+
+    IF gs_info-cert_man IS INITIAL.
+      DO gs_info-cert_num TIMES.
+        CLEAR ls_cert.
+        MOVE-CORRESPONDING gs_info TO ls_cert.
+        ls_cert-cert_adt = gs_info-desc_type.
+        CLEAR ls_cert-desc_type.
+        ls_cert-cert_val = gs_info-cert_val / gs_info-cert_num.
+        ls_cert-cert_num = 1.
+        ls_cert-type = gv_cert.
+        IF gv_certc_datab IS NOT INITIAL AND gv_certc_datbi IS NOT INITIAL.
+          ls_cert-datab = gv_certc_datab.
+          ls_cert-datbi = gv_certc_datbi.
+        ENDIF.
+        APPEND ls_cert TO it_rela.
+      ENDDO.
+    ELSEIF it_rela IS INITIAL.  "MANUAL
+      LOOP AT it_manu INTO ls_manu.
+        DO ls_manu-cert_num TIMES.
+          CLEAR ls_cert.
+          MOVE-CORRESPONDING gs_info TO ls_cert.
+          ls_cert-cert_adt = gs_info-desc_type.
+          CLEAR ls_cert-desc_type.
+          ls_cert-cert_val = ls_manu-cert_val.
+          ls_cert-cert_num = 1.
+          ls_cert-type = gv_cert.
+          IF ls_manu-folio IS NOT INITIAL. "CERTIFICADOS EXTERNOS
+            ls_cert-folio = ls_manu-folio.
+            ls_cert-cert_folio = ls_manu-cert_folio.
+            ls_cert-cert_ext = abap_true.
+          ENDIF.
+          IF gv_certc_datab IS NOT INITIAL AND gv_certc_datbi IS NOT INITIAL.
+            ls_cert-datab = gv_certc_datab.
+            ls_cert-datbi = gv_certc_datbi.
+          ENDIF.
+          APPEND ls_cert TO it_rela.
+        ENDDO.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_rela_vale.
+    DATA: ls_vale    TYPE zfr_convenio,
+          ls_manu    TYPE ty_manu,
+          lv_externo TYPE zfr_folioext.
+
+    CLEAR lv_externo .
+
+    IF gs_info-vale_man IS INITIAL.
+      DO gs_info-vale_num TIMES.
+        CLEAR ls_vale.
+        MOVE-CORRESPONDING gs_info TO ls_vale.
+        ls_vale-vale_adt = gs_info-desc_type.
+        CLEAR ls_vale-desc_type.
+        ls_vale-vale_val = gs_info-vale_val / gs_info-vale_num.
+        ls_vale-vale_num = 1.
+        ls_vale-type = gv_vale.
+        IF gs_info-vale_foliop IS NOT INITIAL.
+          ls_vale-vale_folio = gs_info-vale_foliop + lv_externo.
+          ADD 1 TO lv_externo.
+        ENDIF.
+        APPEND ls_vale TO it_rela.
+      ENDDO.
+    ELSE.
+      LOOP AT it_manu INTO ls_manu.
+        DO ls_manu-cert_num TIMES.
+          CLEAR ls_vale.
+          MOVE-CORRESPONDING gs_info TO ls_vale.
+          ls_vale-vale_adt = gs_info-desc_type.
+          CLEAR ls_vale-desc_type.
+          ls_vale-vale_val = ls_manu-cert_val.
+          ls_vale-vale_num = 1.
+          ls_vale-type = gv_vale.
+          IF gs_info-vale_foliop IS NOT INITIAL.
+            ls_vale-vale_folio = gs_info-vale_foliop + lv_externo.
+            ADD 1 TO lv_externo.
+          ENDIF.
+          APPEND ls_vale TO it_rela.
+        ENDDO.
+      ENDLOOP.
+    ENDIF.
+    IF it_rela IS NOT INITIAL AND gs_info-vale_foliop IS NOT INITIAL.
+      DATA: lt_folios TYPE STANDARD TABLE OF zfr_convenio.
+      SELECT * FROM zfr_convenio INTO TABLE lt_folios
+        WHERE convenio EQ gs_info-folio
+          AND convgjhr EQ gs_info-gjahr.
+      IF sy-subrc EQ 0.
+        LOOP AT it_rela INTO ls_vale.
+          READ TABLE lt_folios TRANSPORTING NO FIELDS WITH KEY vale_folio = ls_vale-vale_folio.
+          IF sy-subrc EQ 0.
+            error = abap_true.
+            MESSAGE e069 WITH ls_vale-vale_folio.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD set_folio.
+    DATA: lv_range  TYPE nrnr,
+          lv_toyear TYPE nryear.
+
+    lv_range = gs_info-type.
+    lv_toyear = sy-datum+0(4).
+
+    CALL FUNCTION 'NUMBER_GET_NEXT'
+      EXPORTING
+        nr_range_nr             = lv_range
+        object                  = 'ZFR_CONVF'
+        quantity                = '1'
+        toyear                  = lv_toyear
+      IMPORTING
+        number                  = gs_info-folio
+      EXCEPTIONS
+        interval_not_found      = 1
+        number_range_not_intern = 2
+        object_not_found        = 3
+        quantity_is_0           = 4
+        quantity_is_not_1       = 5
+        interval_overflow       = 6
+        buffer_overflow         = 7
+        OTHERS                  = 8.
+    IF sy-subrc <> 0.
+      MESSAGE e109.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD set_type.
+    gs_info-type = tipo.
+  ENDMETHOD.
+
+  METHOD copy_bene.
+    DATA:lt_temp TYPE STANDARD TABLE OF ty_bene,
+         ls_temp TYPE ty_bene,
+         ls_bene TYPE zfr_convb.
+    lt_temp[] = lt_bene[].
+    LOOP AT lt_temp INTO ls_temp.
+      MOVE-CORRESPONDING ls_temp TO ls_bene.
+      APPEND ls_bene TO it_bene.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD validar_head.
+    IF gs_info-gjahr NE sy-datum+0(4).                    "VALIDAR EJERCICIO ACTUAL
+*      MESSAGE 'Verfificar que el ejercicio sea el actual' TYPE 'W'.
+      MESSAGE w050.
+    ENDIF.
+
+    SELECT SINGLE kunnr FROM kna1
+      INTO gs_info-kunnr
+       WHERE kunnr EQ gs_info-kunnr.
+    IF sy-subrc NE 0.                                     "VALIDAR EXSISTENCIA DEL CLIENTE
+*      MESSAGE 'El cliente no existe' TYPE 'E'.
+      MESSAGE e051 WITH gs_info-kunnr.
+      error = abap_true.
+    ENDIF.
+
+**    SELECT SINGLE vkorg FROM tvko
+**      INTO gs_info-vkorg
+**      WHERE vkorg EQ gs_info-vkorg.
+**    IF sy-subrc NE 0.
+**      error = abap_true.
+**      MESSAGE e072 WITH gs_info-vkorg.
+**    ENDIF.
+
+    IF gs_info-sgtxt IS INITIAL.                          "CUANDO NO HAY DESCRIPCIÓN, TRAER EL NOMBRE DEL CLIENTE
+      gs_info-sgtxt = kna1-name1.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD validar_convenio.
+    error = validar_head( ).
+
+    IF tipo EQ gv_conv.
+      IF gs_info-desc_type IS INITIAL.                    "VALIDAR TIPO DE DESCUENTO O DESCUENTO ADICIONAL
+*        MESSAGE 'Seleccione un tipo de descuento' TYPE 'E'.
+        MESSAGE e052.
+        error = abap_true.
+      ENDIF.
+    ENDIF.
+
+    error = validar_cond( tipo ).                          "VALIDA CONDICIONES DEL CONVENIO
+
+    IF gs_info-lim_pur IS NOT INITIAL AND gs_info-lim_val IS INITIAL. "VALIDA LÍMITES DEL CONVENIO
+*      MESSAGE 'Ingrese un importe' TYPE 'E'.
+      MESSAGE e053.
+      error = abap_true.
+    ENDIF.
+    IF gs_info-lim_acu IS NOT INITIAL AND gs_info-lim_gjr IS INITIAL AND gs_info-lim_per IS INITIAL.
+*      MESSAGE 'Ingrese un periodo válido' TYPE 'E'.
+      MESSAGE e054.
+      error = abap_true.
+    ENDIF.
+
+    IF gs_info-datab IS INITIAL.                          "VALIDA FECHA DE INICIO
+*      MESSAGE 'Ingrese fecha de inicio' TYPE 'E'.
+      MESSAGE e055.
+      error = abap_true.
+    ENDIF.
+    IF gs_info-datbi IS INITIAL.                          "VALIDA FECHA FINAL
+*      MESSAGE 'Ingrese fecha final' TYPE 'E'.
+      MESSAGE e056.
+      error = abap_true.
+    ENDIF.
+    IF gs_info-datbi LT gs_info-datab.                    "FECHA INICIAL MENOR O IGUAL A FECHA FINAL
+*      MESSAGE 'Verfique la secuencia de fechas' TYPE 'E'.
+      MESSAGE e057.
+      error = abap_true.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD validar_cond.
+    DATA: ls_cond TYPE ty_cond.
+    IF tipo EQ gv_conv OR gs_info-desc_type IS NOT INITIAL.
+      LOOP AT it_cond INTO ls_cond WHERE icon NE c_red.
+        IF gs_info-desc_type = '%'.
+          IF ls_cond-wrbtr GT 100 OR ls_cond-wrbtr LT 0.
+*            MESSAGE 'Verifique valores de descuentos. Para porcentajes debe ser 1-100' TYPE  'S' DISPLAY LIKE 'E'.
+            MESSAGE s058 DISPLAY LIKE 'E'.
+            error = abap_true.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+
+      IF it_cond IS INITIAL OR sy-subrc NE 0.
+*        MESSAGE 'Ingrese las condiciones del convenio' TYPE 'E'.
+        MESSAGE s059 DISPLAY LIKE 'E'.
+        error = abap_true.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD validar_cert.
+
+    IF gs_info-cert_num IS INITIAL.                       "VALIDA VALORES DEL CERTIFICADO
+*      MESSAGE 'Ingrese un número de certificados' TYPE 'E'.
+      MESSAGE e060.
+      error = abap_true.
+    ENDIF.
+    IF gs_info-cert_val IS INITIAL.
+*      MESSAGE 'Ingrese un valor total' TYPE 'E'.
+      MESSAGE e061.
+      error = abap_true.
+    ENDIF.
+
+    IF gs_info-cert_man IS NOT INITIAL.                   "VALIDA DISTRIBUCIÓN MANUAL
+      error = validar_manu( gv_cert ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD validar_vale.
+
+    IF gs_info-vale_num IS INITIAL.                       "VALIDA VALORES DEL VALEIFICADO
+*      MESSAGE 'Ingrese un número de vales' TYPE 'E'.
+      MESSAGE e062.
+      error = abap_true.
+    ENDIF.
+    IF gs_info-vale_val IS INITIAL.
+*      MESSAGE 'Ingrese un valor total' TYPE 'E'.
+      MESSAGE e061.
+      error = abap_true.
+    ENDIF.
+
+
+    IF gs_info-cert_man IS NOT INITIAL.                   "VALIDA DISTRIBUCIÓN MANUAL
+      error = validar_manu( gv_vale ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD validar_manu.
+    DATA: ls_manu    TYPE ty_manu,
+          ls_totales TYPE ty_manu,
+          lv_temp    TYPE wrbtr.
+
+    LOOP AT it_manu INTO ls_manu WHERE icon NE c_red.
+      ADD ls_manu-cert_num TO ls_totales-cert_num.
+      lv_temp = ls_manu-cert_num * ls_manu-cert_val.
+      ADD lv_temp TO ls_totales-cert_val.
+      IF ls_manu-cert_val LE 0 OR ls_manu-cert_val LE 0.
+        IF tipo EQ gv_cert.
+*          MESSAGE 'Verifique valores de certificados manuales' TYPE  'S' DISPLAY LIKE 'E'.
+          MESSAGE s063 DISPLAY LIKE 'E'.
+        ELSEIF tipo EQ gv_vale.
+*          MESSAGE 'Verifique valores de vales manuales' TYPE  'S' DISPLAY LIKE 'E'.
+          MESSAGE s064 DISPLAY LIKE 'E'.
+        ENDIF.
+        error = abap_true.
+      ENDIF.
+    ENDLOOP.
+    IF it_manu IS INITIAL OR sy-subrc NE 0.
+      IF tipo EQ gv_cert.
+*        MESSAGE 'Ingrese los certificados manuales' TYPE 'E'.
+        MESSAGE e065.
+      ELSEIF tipo EQ gv_vale.
+*        MESSAGE 'Ingrese los vales manuales' TYPE 'E'.
+        MESSAGE e066.
+      ENDIF.
+      error = abap_true.
+    ENDIF.
+
+    IF tipo EQ gv_cert.
+      IF ls_totales-cert_num NE gs_info-cert_num OR ls_totales-cert_val NE gs_info-cert_val.
+*        MESSAGE 'Los valores manuales no coinciden con los totales' TYPE 'E'.
+        MESSAGE e067.
+        error = abap_true.
+      ENDIF.
+    ELSEIF tipo EQ gv_vale.
+      IF ls_totales-cert_num NE gs_info-vale_num OR ls_totales-cert_val NE gs_info-vale_val.
+*        MESSAGE 'Los valores manuales no coinciden con los totales' TYPE 'E'.
+        MESSAGE e067.
+        error = abap_true.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD validar_tiendas.
+    DATA: ls_werk TYPE zfr_conva.
+
+    LOOP AT it_werk INTO ls_werk.
+*      IF ls_werk IS NOT INITIAL.
+      CALL FUNCTION 'ZSDF_CHECK_TIENDA'
+        EXPORTING
+          werks     = ls_werk-werks
+        IMPORTING
+          authority = error.
+
+      IF error IS NOT INITIAL.
+        MESSAGE e071 WITH ls_werk-werks.
+        RETURN.
+      ENDIF.
+*        ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD validar_ventas.
+    DATA: ls_vkorg TYPE zfr_convv,
+          lt_tvko  TYPE STANDARD TABLE OF tvko.
+    IF it_vkor IS NOT INITIAL.
+      SELECT vkorg FROM tvko INTO CORRESPONDING FIELDS OF TABLE lt_tvko
+        FOR ALL ENTRIES IN it_vkor
+        WHERE vkorg EQ it_vkor-vkorg.
+    ENDIF.
+
+    LOOP AT it_vkor INTO ls_vkorg.
+      READ TABLE lt_tvko TRANSPORTING NO FIELDS WITH KEY vkorg = ls_vkorg-vkorg.
+      IF sy-subrc NE 0.
+        error = 'X'.
+      ENDIF.
+
+      IF error IS NOT INITIAL.
+        MESSAGE e072 WITH ls_vkorg-vkorg.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD save_head.
+    MODIFY zfr_convenio FROM gs_info.
+    IF sy-subrc NE 0.
+      error = abap_true.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_conv.
+    DATA: ls_cond  TYPE ty_cond,
+          it_convp TYPE STANDARD TABLE OF zfr_convp,
+          ls_convp TYPE zfr_convp.
+
+    FIELD-SYMBOLS: <fs_tiend> TYPE zfr_conva,
+                   <fs_vkorg> TYPE zfr_convv.
+
+    error = save_head( ).
+
+    IF error IS INITIAL AND gs_info-desc_type IS NOT INITIAL.
+      LOOP AT it_cond INTO ls_cond.
+        MOVE-CORRESPONDING ls_cond TO ls_convp.
+        ls_convp-folio = gs_info-folio.
+        ls_convp-gjahr = gs_info-gjahr.
+        ls_convp-posnr = sy-tabix.
+        APPEND ls_convp TO it_convp.
+      ENDLOOP.
+      IF it_convp IS NOT INITIAL.
+        MODIFY zfr_convp FROM TABLE it_convp.
+        IF sy-subrc EQ 0.
+          COMMIT WORK.
+        ELSE.
+          error = abap_true.
+*          MESSAGE 'Hubo un error al guardar los datos' TYPE 'S' DISPLAY LIKE 'E'.
+          MESSAGE s068 DISPLAY LIKE 'E'.
+          ROLLBACK WORK.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    error = save_bene( ).
+
+    IF it_werk IS NOT INITIAL.
+      LOOP AT it_werk ASSIGNING <fs_tiend>.
+        <fs_tiend>-folio = gs_info-folio.
+        <fs_tiend>-gjahr = gs_info-gjahr.
+      ENDLOOP.
+      MODIFY zfr_conva FROM TABLE it_werk.
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+      ELSE.
+        error = abap_true.
+*        MESSAGE 'Hubo un error al guardar los datos' TYPE 'S' DISPLAY LIKE 'E'.
+        MESSAGE s068 DISPLAY LIKE 'E'.
+        ROLLBACK WORK.
+      ENDIF.
+    ENDIF.
+
+    IF it_vkor IS NOT INITIAL.
+      LOOP AT it_vkor ASSIGNING <fs_vkorg>.
+        <fs_vkorg>-folio = gs_info-folio.
+        <fs_vkorg>-gjahr = gs_info-gjahr.
+        <fs_vkorg>-vtweg = gv_vtweg.
+        <fs_vkorg>-spart = gv_spart.
+      ENDLOOP.
+      MODIFY zfr_convv FROM TABLE it_vkor.
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+      ELSE.
+        error = abap_true.
+*        MESSAGE 'Hubo un error al guardar los datos' TYPE 'S' DISPLAY LIKE 'E'.
+        MESSAGE s068 DISPLAY LIKE 'E'.
+        ROLLBACK WORK.
+      ENDIF.
+    ENDIF.
+
+    error = save_rela( ).
+
+  ENDMETHOD.
+
+  METHOD save_bene.
+    DATA: lt_exis TYPE STANDARD TABLE OF zfr_convb,
+          ls_exis TYPE zfr_convb.
+    FIELD-SYMBOLS: <fs_bene> TYPE zfr_convb.
+
+    IF it_bene IS NOT INITIAL.
+
+      SELECT * FROM zfr_convb
+        INTO TABLE lt_exis
+        FOR ALL ENTRIES IN it_bene
+        WHERE folio EQ it_bene-folio
+          AND gjahr EQ it_bene-gjahr
+          AND empleado EQ it_bene-empleado.
+
+      IF sy-subrc NE 0.                               "Nuevo registro
+        LOOP AT it_bene ASSIGNING <fs_bene>.
+          <fs_bene>-folio = gs_info-folio.
+          <fs_bene>-gjahr = gs_info-gjahr.
+          <fs_bene>-cpudt = sy-datum.
+          <fs_bene>-fechac = <fs_bene>-cpudt.
+          <fs_bene>-cputm = sy-uzeit.
+        ENDLOOP.
+        DELETE it_bene WHERE estatus IS NOT INITIAL.
+      ELSE.
+        LOOP AT it_bene ASSIGNING <fs_bene>.
+          READ TABLE lt_exis INTO ls_exis WITH KEY folio = <fs_bene>-folio
+                                                   gjahr = <fs_bene>-gjahr
+                                                   empleado = <fs_bene>-empleado.
+          IF sy-subrc EQ 0.
+            <fs_bene>-cpudt = ls_exis-cpudt.
+            <fs_bene>-cputm = ls_exis-cputm.
+            <fs_bene>-usnam = ls_exis-usnam.
+
+            <fs_bene>-usnmm = sy-uname.
+            <fs_bene>-aedat = sy-datum.
+            IF <fs_bene>-estatus EQ 'R'.
+              <fs_bene>-fechac = <fs_bene>-aedat.
+              <fs_bene>-horac = sy-uzeit.
+              CLEAR <fs_bene>-estatus.
+            ENDIF.
+          ELSE.
+            <fs_bene>-folio = gs_info-folio.
+            <fs_bene>-gjahr = gs_info-gjahr.
+            <fs_bene>-cpudt = sy-datum.
+            <fs_bene>-fechac = <fs_bene>-cpudt.
+            <fs_bene>-cputm = sy-uzeit.
+            IF <fs_bene>-estatus IS NOT INITIAL.
+              <fs_bene>-estatus = 'B'.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+        DELETE it_bene WHERE estatus EQ 'B'.
+      ENDIF.
+
+      IF gs_consulta IS INITIAL.
+**        error = save_bene_bp( ).
+      ELSE.
+        SELECT * FROM zfr_convb INTO TABLE lt_exis
+        FOR ALL ENTRIES IN it_bene
+        WHERE folio EQ gs_info-convenio
+          AND gjahr EQ gs_info-convgjhr
+          AND empleado EQ it_bene-empleado.
+        LOOP AT it_bene ASSIGNING <fs_bene>.
+          READ TABLE lt_exis INTO ls_exis WITH KEY empleado = <fs_bene>-empleado.
+          IF sy-subrc EQ 0.
+            <fs_bene>-kunnr = ls_exis-kunnr.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+      IF error IS INITIAL AND it_bene IS NOT INITIAL.
+        DATA: lv_subrc TYPE c.
+        MODIFY zfr_convb FROM TABLE it_bene.
+        IF sy-subrc EQ 0.
+          COMMIT WORK.
+          lv_subrc = sy-subrc.
+          DESCRIBE TABLE it_bene LINES gv_mess.
+          CONCATENATE 'Guarda beneficiarios' gv_mess lv_subrc INTO gv_mess SEPARATED BY space.
+*          MESSAGE gv_mess TYPE 'I'.
+        ELSE.
+          error = abap_true.
+*        MESSAGE 'Hubo un error al guardar los datos' TYPE 'S' DISPLAY LIKE 'E'.
+          MESSAGE s068 DISPLAY LIKE 'I'.
+          ROLLBACK WORK.
+        ENDIF.
+      ELSE.
+        MESSAGE gv_mess TYPE 'I'.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_rela.
+    FIELD-SYMBOLS: <ls_rela>    TYPE zfr_convenio.
+    IF it_rela IS NOT INITIAL.
+      LOOP AT it_rela ASSIGNING <ls_rela>.
+        DATA: lv_rela TYPE REF TO cls_convenio.
+        <ls_rela>-convenio = gs_info-folio.
+        <ls_rela>-convgjhr = gs_info-gjahr.
+        CREATE OBJECT lv_rela.
+        lv_rela->init_info( <ls_rela> ).
+        IF <ls_rela>-cert_ext IS INITIAL.
+          lv_rela->set_folio( ).
+        ENDIF.
+        CLEAR <ls_rela>-cert_ext.
+        error = lv_rela->save_conv( ).
+        <ls_rela>-folio = lv_rela->gs_info-folio.
+        IF error IS NOT INITIAL.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD imprimir.
+    DATA: lv_fm_name TYPE rs38l_fnam.
+
+
+    CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+      EXPORTING
+        formname           = 'ZSD_CONV_VALE'
+      IMPORTING
+        fm_name            = lv_fm_name
+      EXCEPTIONS
+        no_form            = 1
+        no_function_module = 2
+        OTHERS             = 3.
+
+
+    IF sy-subrc EQ 0.
+      CALL FUNCTION lv_fm_name
+        EXPORTING
+          p_convenio       = 0    "gs_info-folio
+          p_gjahr          = gs_info-gjahr
+        TABLES
+          it_rela          = it_rela
+        EXCEPTIONS
+          formatting_error = 1
+          internal_error   = 2
+          send_error       = 3
+          user_canceled    = 4.
+
+      IF sy-subrc NE 0.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_bene_bp.
+    DATA: lt_bapi       TYPE STANDARD TABLE OF zfr_convb,
+          ls_bene       TYPE zfr_convb,
+          ls_central    TYPE bapibus1006_central,
+          ls_person     TYPE bapibus1006_central_person,
+          ls_address    TYPE bapibus1006_address,
+          ls_address_bp TYPE bapibus1006_address,
+          lt_return     TYPE STANDARD TABLE OF bapiret2,
+          ls_return     TYPE bapiret2,
+          lv_bp         TYPE bu_partner,
+          ls_person_k   TYPE bapibus1006_central_person,
+          ls_organ_k    TYPE bapibus1006_central_organ.
+    FIELD-SYMBOLS: <fs_bene> TYPE zfr_convb.
+
+*************************    VARIABLES     ***************************
+    DATA: ls_tvarv   TYPE tvarvc,
+          lv_type    TYPE bu_type,
+          lv_reltype TYPE bu_reltyp,
+          lv_role    TYPE bu_partnerrole,
+          lv_group   TYPE bu_group.
+
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'BU_TYPE'.
+    IF sy-subrc EQ 0.
+      lv_type = ls_tvarv-high.
+    ENDIF.
+    IF lv_type IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'BU_GROUP'.
+    IF sy-subrc EQ 0.
+      lv_group = ls_tvarv-high.
+    ENDIF.
+    IF lv_group IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'BU_RELTYP'.
+    IF sy-subrc EQ 0.
+      lv_reltype = ls_tvarv-high.
+    ENDIF.
+    IF lv_reltype IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'BU_PARTNERROLE'.
+    IF sy-subrc EQ 0.
+      lv_role = ls_tvarv-high.
+    ENDIF.
+    IF lv_role IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'VTWEG'.
+    IF sy-subrc EQ 0.
+      gv_vtweg = ls_tvarv-high.
+    ENDIF.
+    IF gv_vtweg IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'SPART'.
+    IF sy-subrc EQ 0.
+      gv_spart = ls_tvarv-high.
+    ENDIF.
+    IF gv_spart IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    IF error IS NOT INITIAL.
+**      gv_mess = 'Error en las variables.'.
+      gv_mess = TEXT-010.
+    ENDIF.
+*************************   END VARIABLES     ***************************
+
+    LOOP AT it_bene ASSIGNING <fs_bene> WHERE kunnr IS INITIAL.
+      ls_bene = <fs_bene>.
+      CLEAR: ls_person,
+             ls_central,
+             ls_address,
+             ls_person_k,
+             ls_organ_k.
+
+      DATA: lt_name TYPE STANDARD TABLE OF string,
+            lv_name TYPE i,
+            lv_temp TYPE string.
+
+      SPLIT ls_bene-nombre AT space INTO TABLE lt_name.
+      DESCRIBE TABLE lt_name LINES lv_name.
+      IF lv_name EQ 2.
+        READ TABLE lt_name INTO lv_temp INDEX 1.
+        ls_person-firstname = lv_temp.
+        READ TABLE lt_name INTO lv_temp INDEX 2.
+        ls_person-lastname = lv_temp.
+      ELSEIF lv_name GT 2.
+        SUBTRACT 1 FROM lv_name.
+        READ TABLE lt_name INTO lv_temp INDEX lv_name.
+        ls_person-lastname = lv_temp.
+        ADD 1 TO lv_name.
+        READ TABLE lt_name INTO lv_temp INDEX lv_name.
+        CONCATENATE ls_person-lastname lv_temp INTO ls_person-lastname SEPARATED BY space.
+        SUBTRACT 2 FROM lv_name.
+
+        LOOP AT lt_name INTO lv_temp FROM 1 TO lv_name.
+          CONDENSE lv_temp NO-GAPS.
+          IF ls_person-firstname IS INITIAL.
+            ls_person-firstname = lv_temp.
+          ELSE.
+            CONCATENATE ls_person-firstname lv_temp INTO ls_person-firstname SEPARATED BY space.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+      ls_person-fullname = ls_bene-nombre.
+      ls_person-fullname = ls_bene-nombre.
+      ls_central-partnerexternal = ls_bene-empleado.
+
+      CALL FUNCTION 'BAPI_BUPA_CENTRAL_GETDETAIL'
+        EXPORTING
+          businesspartner         = gs_info-kunnr
+        IMPORTING
+          centraldataperson       = ls_person_k
+          centraldataorganization = ls_organ_k.
+      IF ls_person_k IS NOT INITIAL.
+        ls_person-correspondlanguage = ls_person_k-correspondlanguage.
+        ls_person-correspondlanguageiso = ls_person_k-correspondlanguageiso.
+      ELSE.
+        ls_person-correspondlanguage = sy-langu.
+      ENDIF.
+
+      DATA lv_guid TYPE bapibus1006_addresses_int-addrguid.
+      DATA: lv_guid2    TYPE but020-guid.
+      CALL FUNCTION 'BAPI_BUPA_ADDRESSES_GET'
+        EXPORTING
+          businesspartner     = gs_info-kunnr
+        IMPORTING
+          standardaddressguid = lv_guid.
+
+      lv_guid2 = lv_guid.
+      CALL FUNCTION 'BAPI_BUPA_ADDRESS_GETDETAIL'
+        EXPORTING
+          businesspartner = gs_info-kunnr
+          addressguid     = lv_guid2
+*         VALID_DATE      = SY-DATLO
+*         RESET_BUFFER    =
+        IMPORTING
+          addressdata     = ls_address.
+
+      ls_address_bp-country = ls_address-country.
+
+      CALL FUNCTION 'BAPI_BUPA_CREATE_FROM_DATA'
+        EXPORTING
+*         BUSINESSPARTNEREXTERN              =
+          partnercategory   = lv_type
+          partnergroup      = lv_group
+          centraldata       = ls_central
+          centraldataperson = ls_person
+*         CENTRALDATAORGANIZATION            =
+*         CENTRALDATAGROUP  =
+          addressdata       = ls_address_bp
+*         DUPLICATE_MESSAGE_TYPE             =
+*         ACCEPT_ERROR      = ' '
+        IMPORTING
+          businesspartner   = lv_bp
+        TABLES
+          return            = lt_return.
+
+      READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+      IF sy-subrc NE 0.
+        <fs_bene>-kunnr = lv_bp.
+
+        CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+          EXPORTING
+            wait = abap_true.
+
+        CLEAR lt_return.
+        CALL FUNCTION 'BAPI_BUPR_RELATIONSHIP_CREATE'
+          EXPORTING
+            businesspartner1     = lv_bp
+            businesspartner2     = gs_info-kunnr
+            relationshipcategory = lv_reltype
+          TABLES
+            return               = lt_return.
+        READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+        IF sy-subrc NE 0.
+          CLEAR lt_return.
+          CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+            EXPORTING
+              wait = abap_true.
+        ELSE.
+          MESSAGE ls_return-message TYPE ls_return-type.
+          gv_mess = ls_return-message.
+        ENDIF.
+
+        CLEAR lt_return.
+
+        CALL FUNCTION 'BAPI_BUPA_ROLE_ADD_2'
+          EXPORTING
+            businesspartner     = lv_bp
+            businesspartnerrole = lv_role
+          TABLES
+            return              = lt_return.
+
+        READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+        IF sy-subrc NE 0.
+          CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+            EXPORTING
+              wait = abap_true.
+
+          CALL METHOD add_sales_bp(
+            EXPORTING
+              im_bp  = lv_bp
+              im_num = ls_bene-empleado ).
+
+          DATA: ls_vkor LIKE LINE OF it_vkor.
+          LOOP AT it_vkor INTO ls_vkor.
+            IF gs_info-vale_pro IS INITIAL.
+              error = add_hiera(
+                EXPORTING
+                  im_bp    = lv_bp
+                  im_kn    = gs_info-kunnr
+                  im_vkorg = ls_vkor-vkorg
+                  im_vtweg = gv_vtweg
+                  im_spart = gv_spart
+                  im_custh = gv_custhityp ).
+            ELSE.
+              error = add_hiera(
+                EXPORTING
+                  im_bp    = lv_bp
+                  im_kn    = gs_info-vale_pro
+                  im_vkorg = ls_vkor-vkorg
+                  im_vtweg = gv_vtweg
+                  im_spart = gv_spart
+                  im_custh = gv_custhityp ).
+            ENDIF.
+          ENDLOOP.
+        ELSE.
+          MESSAGE ls_return-message TYPE ls_return-type.
+          gv_mess = ls_return-message.
+        ENDIF.
+      ELSE.
+        error = abap_true.
+        <fs_bene>-estatus = 'B'.
+        MESSAGE ls_return-message TYPE ls_return-type.
+        gv_mess = ls_return-message.
+      ENDIF.
+    ENDLOOP.
+
+    IF gs_info-type = gv_vale AND gs_info-vale_pro IS NOT INITIAL.
+*      DATA: ls_vkor LIKE LINE OF it_vkor.
+      LOOP AT it_vkor INTO ls_vkor.
+        error = add_hiera(
+          EXPORTING
+            im_bp    = gs_info-vale_pro
+            im_kn    = gs_info-kunnr
+            im_vkorg = ls_vkor-vkorg
+            im_vtweg = gv_vtweg
+            im_spart = gv_spart
+            im_custh = gv_custhityp ).
+
+      ENDLOOP.
+    ENDIF.
+
+    DELETE it_bene WHERE estatus = 'B'.
+  ENDMETHOD.
+
+  METHOD add_sales_bp.
+    DATA: lv_value  TYPE bdc_fval,
+          it_but000 TYPE STANDARD TABLE OF but000,
+          vl_num    TYPE i VALUE IS INITIAL.
+    CLEAR: it_bdcdata.
+
+
+*************************    VARIABLES     ***************************
+    DATA: ls_tvarv   TYPE tvarvc,
+          lv_type    TYPE bu_type,
+          lv_reltype TYPE bu_reltyp,
+          lv_role    TYPE bu_partnerrole,
+          lv_vsbed   TYPE vsbed,
+          lv_taxkd   TYPE takld,
+          lv_group   TYPE bu_group.
+
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'BU_PARTNERROLE'.
+    IF sy-subrc EQ 0.
+      lv_role = ls_tvarv-high.
+    ENDIF.
+    IF lv_role IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'VTWEG'.
+    IF sy-subrc EQ 0.
+      gv_vtweg = ls_tvarv-high.
+    ENDIF.
+    IF gv_vtweg IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'SPART'.
+    IF sy-subrc EQ 0.
+      gv_spart = ls_tvarv-high.
+    ENDIF.
+    IF gv_spart IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'VSBED'.
+    IF sy-subrc EQ 0.
+      lv_vsbed = ls_tvarv-high.
+    ENDIF.
+    IF lv_vsbed IS INITIAL.
+      error = abap_true.
+    ENDIF.
+    READ TABLE it_bupa INTO ls_tvarv WITH KEY low = 'TAXKD'.
+    IF sy-subrc EQ 0.
+      lv_taxkd = ls_tvarv-high.
+    ENDIF.
+    IF lv_taxkd IS INITIAL.
+      error = abap_true.
+    ENDIF.
+
+*************************   END VARIABLES     ***************************
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLWBABAP'      pv_value = '0100' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'      pv_value = 'RS38M-PROGRAMM' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'      pv_value = '=STRT' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RS38M-PROGRAMM'  pv_value = 'ZFRSD_CONVENIOS_ADD_SALES' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RS38M-FUNC_EDIT' pv_value = 'X' ).
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'ZFRSD_CONVENIOS_ADD_SALES' pv_value = '1000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'                pv_value = 'P_BP' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                pv_value = '=ONLI' ).
+    lv_value = im_bp.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'P_BP'                      pv_value = lv_value ).
+
+*****************************************************************************************************
+    SELECT * FROM but000 INTO TABLE it_but000
+      WHERE bpext = im_num.
+
+    IF sy-subrc EQ 0.
+      DESCRIBE TABLE it_but000 LINES vl_num.
+    ENDIF.
+    IF vl_num GT 1.
+      dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLSPO1'    pv_value = '0600' ).
+      dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'  pv_value = '=OPT2' ).
+      dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'  pv_value = 'SAPLSPO1                                0601SUBSCREEN' ).
+    ENDIF.
+*****************************************************************************************************
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLBUS_LOCATOR'             pv_value = '3000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                  pv_value = '=BUS_LOCATOR_VISIBLE' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         2240SCREEN_3000_RESIZING_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         3100SCREEN_1010_LEFT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         3202SCREEN_3100_TABSTRIP_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'                  pv_value = 'BUS_LOCA_SRCH01-SEARCH_TYPE' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_LOCA_SRCH01-SEARCH_TYPE' pv_value = '1' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_LOCA_SRCH01-SEARCH_ID'   pv_value = '1' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         3211SCREEN_3200_SEARCH_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_SEARCH                  2100SCREEN_3200_SEARCH_FIELDS_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_SEARCH-PARTNER_NUMBER'  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         3240SCREEN_3200_SEARCH_BUTTON_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1060SCREEN_3200_RESULT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1080SCREEN_1060_RESULT_AREA' ).
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLBUS_LOCATOR'             pv_value = '3000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                  pv_value = '=BUS_MAIN_ENTER' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         2000SCREEN_3000_RESIZING_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1000SCREEN_1010_RIGHT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1510SCREEN_1000_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1100SCREEN_1000_WORKAREA_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1110SCREEN_1100_ROLE_AND_TIME_AREA' ).
+    lv_value = lv_role.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_ROLE'  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_TIMEDEP' pv_value = '000001' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1130SCREEN_1110_TIME_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1102SCREEN_1100_MAIN_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0001SCREEN_1100_SUB_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'RF02D-SPART' ).
+    lv_value = gs_info-vkorg.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RF02D-VKORG'                 pv_value = lv_value ).
+    lv_value = gv_vtweg.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RF02D-VTWEG'                 pv_value = lv_value ).
+    lv_value = gv_spart.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RF02D-SPART'                 pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0028SCREEN_1100_TABSTRIP_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                7013GENSUB' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0080A02P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0081A02P02' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0082A02P03' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P04' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P05' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P06' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0083A03P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A04P01' ).
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLBUS_LOCATOR'             pv_value = '3000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                  pv_value = '=SCREEN_1100_TAB_03' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         2000SCREEN_3000_RESIZING_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1000SCREEN_1010_RIGHT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1510SCREEN_1000_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1100SCREEN_1000_WORKAREA_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1110SCREEN_1100_ROLE_AND_TIME_AREA' ).
+    lv_value = lv_role.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_ROLE'  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_TIMEDEP' pv_value = '000001' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1130SCREEN_1110_TIME_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1102SCREEN_1100_MAIN_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0001SCREEN_1100_SUB_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0028SCREEN_1100_TABSTRIP_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0080A02P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0081A02P02' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0082A02P03' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'                  pv_value = 'GS_KNVV-VSBED' ).
+    lv_value = lv_vsbed.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'GS_KNVV-VSBED'                  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P04' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P05' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A02P06' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A04P01' ).
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLBUS_LOCATOR'             pv_value = '3000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                  pv_value = '=SCREEN_1100_TAB_05' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         2000SCREEN_3000_RESIZING_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1000SCREEN_1010_RIGHT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1510SCREEN_1000_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1100SCREEN_1000_WORKAREA_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1110SCREEN_1100_ROLE_AND_TIME_AREA' ).
+    lv_value = lv_role.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_ROLE'  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_TIMEDEP' pv_value = '000001' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1130SCREEN_1110_TIME_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1102SCREEN_1100_MAIN_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0001SCREEN_1100_SUB_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0028SCREEN_1100_TABSTRIP_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                7024GENSUB' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0084A02P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0085A03P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0086A03P02' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0087A04P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0088A05P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'                  pv_value = 'GT_KNVI_TC-TAXKD(01)' ).
+    lv_value = lv_taxkd.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'GT_KNVI_TC-TAXKD(01)'        pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'GS_KNVV-PRFRE'               pv_value = 'X' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0003A05P02' ).
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLBUS_LOCATOR'             pv_value = '3000' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'                  pv_value = '=BUS_MAIN_SAVE' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUS_LOCATOR                         2000SCREEN_3000_RESIZING_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1000SCREEN_1010_RIGHT_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1510SCREEN_1000_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1100SCREEN_1000_WORKAREA_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1110SCREEN_1100_ROLE_AND_TIME_AREA' ).
+    lv_value = lv_role.
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_ROLE'  pv_value = lv_value ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BUS_JOEL_MAIN-PARTNER_TIMEDEP' pv_value = '000001' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1130SCREEN_1110_TIME_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUPA_DIALOG_JOEL                    1102SCREEN_1100_MAIN_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0001SCREEN_1100_SUB_HEADER_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                0028SCREEN_1100_TABSTRIP_AREA' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLBUSS                                7001GENSUB' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_SUBSCR'                  pv_value = 'SAPLCVI_FS_UI_CUSTOMER_SALES            0070A02P01' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'                  pv_value = 'CVIS_CUST_FUNCTIONS_DYNPRO-KTONR(02)' ).
+    DATA: lv_num(2) TYPE n,
+          lv_name   TYPE bdc_fval.
+    lv_num = 3.
+    LOOP AT it_knvp INTO ls_tvarv.
+      ADD 1 TO lv_num.
+      lv_name = lv_num.
+      CONCATENATE 'CVIS_CUST_FUNCTIONS_DYNPRO-PARVW(' lv_name ')' INTO lv_name.
+      lv_value = ls_tvarv-low.
+      dynpro( EXPORTING pv_flag = ''    pv_name = lv_name pv_value = lv_value ).
+
+**      lv_name = lv_num.
+**      CONCATENATE 'CVIS_CUST_FUNCTIONS_DYNPRO-KTONR(' lv_name ')' INTO lv_name.
+**      lv_value = gs_info-kunnr.
+**      dynpro( EXPORTING pv_flag = ''    pv_name = lv_name pv_value = lv_value ).
+    ENDLOOP.
+
+    dynpro( EXPORTING pv_flag = 'X'   pv_name = 'SAPLWBABAP'      pv_value = '0100' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_OKCODE'      pv_value = '=BACK' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'BDC_CURSOR'      pv_value = 'RS38M-PROGRAMM' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RS38M-PROGRAMM'  pv_value = 'ZFRSD_CONVENIOS_ADD_SALES' ).
+    dynpro( EXPORTING pv_flag = ''    pv_name = 'RS38M-FUNC_EDIT' pv_value = 'X' ).
+
+
+    DATA: modo       TYPE c LENGTH 1,
+          lt_messtab TYPE STANDARD TABLE OF bdcmsgcoll.
+    CLEAR:lt_messtab.
+
+    MOVE 'N' TO modo.
+
+    CALL TRANSACTION 'SE38'
+         USING it_bdcdata
+         MODE modo
+         UPDATE 'S'
+         MESSAGES INTO lt_messtab.
+
+    READ TABLE lt_messtab TRANSPORTING NO FIELDS INDEX 1.
+
+  ENDMETHOD.
+
+  METHOD dynpro.
+    DATA: ls_bdcdata TYPE bdcdata.
+    IF pv_flag = abap_true.
+      CLEAR ls_bdcdata.
+      ls_bdcdata-program  = pv_name.
+      ls_bdcdata-dynpro   = pv_value.
+      ls_bdcdata-dynbegin = abap_true.
+      APPEND ls_bdcdata TO it_bdcdata.
+    ELSE.
+      CLEAR ls_bdcdata.
+      ls_bdcdata-fnam = pv_name.
+      ls_bdcdata-fval = pv_value.
+      APPEND ls_bdcdata TO it_bdcdata.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD add_hiera.
+    DATA: lt_node   TYPE STANDARD TABLE OF bapikna1_knvh_process,
+          ls_node   TYPE bapikna1_knvh_process,
+          lt_return TYPE STANDARD TABLE OF bapiret2,
+          ls_return TYPE bapiret2.
+**                    ls_knvh TYPE knvh.
+
+**              CLEAR ls_knvh.
+**              SELECT SINGLE * FROM knvh INTO ls_knvh
+**                WHERE kunnr EQ gs_info-kunnr
+**                  AND vkorg EQ gs_info-vkorg
+**                  AND vtweg EQ gv_vtweg
+**                  AND spart EQ gv_spart
+**                  AND datab LE sy-datum
+**                  AND datbi GE sy-datum.
+
+    ls_node-customer = im_bp.
+    ls_node-salesorg = im_vkorg.
+    ls_node-distr_chan = im_vtweg.
+    ls_node-division = im_spart.
+    ls_node-custhityp = im_custh.
+    IF ls_node-custhityp IS INITIAL.
+      ls_node-custhityp = 'A'.
+    ENDIF.
+    ls_node-parent_customer = im_kn.
+    ls_node-parent_sales_org = im_vkorg.
+    ls_node-parent_distr_chan = im_vtweg.
+    ls_node-parent_division = im_spart.
+    ls_node-valid_from = gs_info-datab.
+    ls_node-valid_to = gs_info-datbi.
+**    ls_node-pric_rel = ls_knvh-prfre.
+    APPEND ls_node TO lt_node.
+
+    CALL FUNCTION 'BAPI_CUSTOMER_HIERARCHIE_INS'
+      TABLES
+        node_list = lt_node
+        return    = lt_return.
+    READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+    IF sy-subrc NE 0.
+      CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+        EXPORTING
+          wait = abap_true.
+    ELSE.
+      error = 'X'.
+      MESSAGE ls_return-message TYPE ls_return-type.
+      gv_mess = ls_return-message.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.

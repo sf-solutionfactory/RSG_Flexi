@@ -1,0 +1,484 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_F01
+*&---------------------------------------------------------------------*
+***************   PANTALLA PRINCIPAL ***********************************
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'ST100'.
+  SET TITLEBAR 'T100'.
+ENDMODULE.
+
+MODULE start OUTPUT.
+
+  IF obj_main IS NOT BOUND.
+    CREATE OBJECT obj_main.
+    obj_main->run( ).
+  ENDIF.
+ENDMODULE.
+
+MODULE tiendas OUTPUT.
+  DATA: lv_num      TYPE i,
+        lv_iconname TYPE string.
+
+  zfr_conva-werks = obj_tiendas->tienda.
+
+  DESCRIBE TABLE obj_tiendas->it_data LINES lv_num.
+
+  IF lv_num GT 1.
+    lv_iconname = 'ICON_DISPLAY_MORE'.
+  ELSE.
+    lv_iconname = 'ICON_ENTER_MORE'.
+  ENDIF.
+
+  CALL FUNCTION 'ICON_CREATE'
+    EXPORTING
+      name                  = lv_iconname
+    IMPORTING
+      result                = gv_btn_tienda
+    EXCEPTIONS
+      icon_not_found        = 1
+      outputfield_too_short = 2.
+
+  IF sy-subrc NE 0.
+  ENDIF.
+
+ENDMODULE.
+
+MODULE ventas OUTPUT.
+  DATA: lv_num2      TYPE i,
+        lv_iconname2 TYPE string.
+
+  zfr_convenio-vkorg = obj_ventas->vkorg.
+
+  DESCRIBE TABLE obj_ventas->it_data LINES lv_num2.
+
+  IF lv_num2 GT 1.
+    lv_iconname2 = 'ICON_DISPLAY_MORE'.
+  ELSE.
+    lv_iconname2 = 'ICON_ENTER_MORE'.
+  ENDIF.
+
+  CALL FUNCTION 'ICON_CREATE'
+    EXPORTING
+      name                  = lv_iconname2
+    IMPORTING
+      result                = gv_btn_ventas
+    EXCEPTIONS
+      icon_not_found        = 1
+      outputfield_too_short = 2.
+
+  IF sy-subrc NE 0.
+  ENDIF.
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE gv_ok_code.
+    WHEN 'BACK' OR 'EXIT'.
+      LEAVE PROGRAM.
+    WHEN 'CANCEL'.
+      LEAVE TO SCREEN 0100.
+    WHEN 'BTN_CREA'.
+      PERFORM f_crea_cliente.
+    WHEN 'BTN_PROMO'.
+      PERFORM f_crea_cliente.
+    WHEN 'SEL_WERK'.
+      PERFORM f_tiendas.
+    WHEN 'SEL_VKOR'.
+      PERFORM f_ventas.
+    WHEN 'CERT_SELMAN'.
+      PERFORM f_importe_manual_cert.
+    WHEN 'VALE_SELMAN'.
+      PERFORM f_importe_manual_vale.
+    WHEN 'NEW'.
+      PERFORM f_nuevo.
+    WHEN 'EDIT'.
+      PERFORM f_editar.
+    WHEN 'VIEW'.
+      PERFORM f_visualizar.
+    WHEN 'MANU_EQUAL'.
+      PERFORM f_copiar_manual.
+    WHEN 'BTN_CONSULTA'.
+      PERFORM f_consultar.
+    WHEN 'BTN_CARGA'.
+      PERFORM f_carga.
+    WHEN OTHERS.
+
+  ENDCASE.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_KUNNR  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_kunnr INPUT.
+  DATA: lv_error TYPE char01.
+  IF zfr_convenio-kunnr IS NOT INITIAL.
+    SELECT SINGLE name1 FROM kna1
+    INTO kna1-name1
+    WHERE kunnr EQ zfr_convenio-kunnr.
+
+    IF sy-subrc EQ 0 AND zfr_convenio-vkorg IS NOT INITIAL.
+      PERFORM valida_vkorg USING zfr_convenio-kunnr zfr_convenio-vkorg
+                                 gv_vtweg gv_spart
+                           CHANGING lv_error.
+      IF lv_error IS NOT INITIAL.
+        CLEAR:kna1-name1.
+      ENDIF.
+    ENDIF.
+  ELSE.
+    CLEAR:kna1-name1.
+  ENDIF.
+  CLEAR lv_error.
+  IF zfr_convenio-vale_pro IS NOT INITIAL.
+    SELECT SINGLE name1 FROM kna1
+    INTO gv_name1
+    WHERE kunnr EQ zfr_convenio-vale_pro.
+    IF sy-subrc EQ 0 AND zfr_convenio-vkorg IS NOT INITIAL.
+      PERFORM valida_vkorg USING zfr_convenio-vale_pro zfr_convenio-vkorg
+                                 gv_vtweg gv_spart
+                           CHANGING lv_error.
+      IF lv_error IS NOT INITIAL.
+        CLEAR:gv_name1.
+      ENDIF.
+    ENDIF.
+  ELSE.
+    CLEAR:gv_name1.
+  ENDIF.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_TYPE  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_type INPUT.
+  obj_tconvenio->desc_type = zfr_convenio-desc_type.
+  obj_tcertific->desc_type = zfr_convenio-cert_adt.
+  obj_tvales->desc_type = zfr_convenio-vale_adt.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_FILE  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_file INPUT.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      file_name = rlgrap-filename
+    EXCEPTIONS
+      OTHERS    = 1.
+
+  IF sy-subrc EQ 0.
+    "Hubo algún error
+  ENDIF.
+ENDMODULE.
+
+***************   PANTALLA PRINCIPAL ***********************************
+*&SPWIZARD: OUTPUT MODULE FOR TS 'TABS_100'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: SETS ACTIVE TAB
+MODULE tabs_100_active_tab_set OUTPUT.
+  tabs_100-activetab = g_tabs_100-pressed_tab.
+  CASE g_tabs_100-pressed_tab.
+    WHEN c_tabs_100-tab1.
+      g_tabs_100-subscreen = '0101'.
+    WHEN c_tabs_100-tab2.
+      g_tabs_100-subscreen = '0102'.
+    WHEN c_tabs_100-tab3.
+      g_tabs_100-subscreen = '0103'.
+    WHEN c_tabs_100-tab4.
+      g_tabs_100-subscreen = '0104'.
+    WHEN OTHERS.
+*&SPWIZARD:      DO NOTHING
+  ENDCASE.
+ENDMODULE.
+
+*&SPWIZARD: INPUT MODULE FOR TS 'TABS_100'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: GETS ACTIVE TAB
+MODULE tabs_100_active_tab_get INPUT.
+  gv_ok_code = sy-ucomm.
+  CASE gv_ok_code.
+    WHEN c_tabs_100-tab1.
+      g_tabs_100-pressed_tab = c_tabs_100-tab1.
+    WHEN c_tabs_100-tab2.
+      g_tabs_100-pressed_tab = c_tabs_100-tab2.
+    WHEN c_tabs_100-tab3.
+      g_tabs_100-pressed_tab = c_tabs_100-tab3.
+    WHEN c_tabs_100-tab4.
+      g_tabs_100-pressed_tab = c_tabs_100-tab4.
+    WHEN OTHERS.
+*&SPWIZARD:      DO NOTHING
+  ENDCASE.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Form F_TIENDAS
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_tiendas .
+  obj_tiendas->set_table(
+  EXPORTING
+    werks =  zfr_conva-werks
+  CHANGING
+    it_tab = it_tiendas ).
+  obj_tiendas->alv_mostrar( contenedor = 'CC_TIENDAS').
+
+  CALL SCREEN 0200 STARTING AT 50 1.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_TIENDAS
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_ventas .
+  obj_ventas->set_table(
+  EXPORTING
+    vkorg =  zfr_convenio-vkorg
+  CHANGING
+    it_tab = it_ventas ).
+  obj_ventas->alv_mostrar( contenedor = 'CC_VENTAS').
+
+  CALL SCREEN 0300 STARTING AT 50 1.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_IMPORTE_MANUAL
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_importe_manual_cert .
+  IF zfr_convenio-cert_man EQ abap_true.
+    IF obj_tcert_man IS NOT BOUND.
+      CREATE OBJECT obj_tcert_man.
+      obj_tcert_man->get_data( ).
+      obj_tcert_man->tab = 'CERT'.
+      obj_tcert_man->alv_mostrar( contenedor = 'CC_CERT_CANT').
+    ELSE.
+      CLEAR obj_tcert_man->it_data.
+      CALL METHOD obj_tcert_man->refresh.
+    ENDIF.
+  ELSE.
+    IF obj_tcert_man IS BOUND.
+      CALL METHOD obj_tcert_man->destroy.
+      FREE obj_tcert_man.
+    ENDIF.
+    IF obj_certs IS BOUND .
+      CLEAR obj_certs->it_copiados.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_IMPORTE_MANUAL_CERTEXT
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_importe_manual_certext .
+  IF zfr_convenio-cert_man EQ abap_true.
+    IF obj_tcert_man IS NOT BOUND.
+      CREATE OBJECT obj_tcert_man.
+      obj_tcert_man->set_certs( obj_certs->it_copiados ).
+      obj_tcert_man->tab = 'CERT'.
+      obj_tcert_man->alv_mostrar( contenedor = 'CC_CERT_CANT').
+    ELSE.
+      obj_tcert_man->set_certs( obj_certs->it_copiados ).
+      CALL METHOD obj_tcert_man->refresh.
+    ENDIF.
+  ELSE.
+    IF obj_tcert_man IS BOUND.
+      CALL METHOD obj_tcert_man->destroy.
+      FREE obj_tcert_man.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_IMPORTE_MANUAL_VALE
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_importe_manual_vale .
+  IF zfr_convenio-vale_man EQ abap_true.
+    IF obj_tvale_man IS NOT BOUND.
+      CREATE OBJECT obj_tvale_man.
+      obj_tvale_man->get_data( ).
+      obj_tvale_man->tab = 'VALE'.
+      obj_tvale_man->alv_mostrar( contenedor = 'CC_VALE_CANT').
+    ELSE.
+      CLEAR obj_tvale_man->it_data.
+      CALL METHOD obj_tvale_man->refresh.
+    ENDIF.
+  ELSE.
+    IF obj_tvale_man IS BOUND.
+      CALL METHOD obj_tvale_man->destroy.
+      FREE obj_tvale_man.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_NUEVO
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_nuevo .
+  CASE tabs_100-activetab.
+    WHEN c_tabs_100-tab1.
+      obj_main->new_convenio( ).
+    WHEN c_tabs_100-tab2.
+      obj_main->new_cert( ).
+    WHEN c_tabs_100-tab3.
+      obj_main->new_vale( ).
+    WHEN c_tabs_100-tab4.
+*      MESSAGE 'Cambie de pestaña' TYPE 'W'.
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_EDITAR
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_editar .
+  obj_main->update( ).
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_VISUALIZAR
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_visualizar .
+  IF zfr_convenio-folio IS NOT INITIAL.
+    SUBMIT zfrsd_convenios_consultar
+    WITH p_folio EQ zfr_convenio-folio
+    WITH p_gjahr EQ zfr_convenio-gjahr
+    AND RETURN
+    .
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_COPIAR_MANUAL
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_copiar_manual .
+  CASE tabs_100-activetab.
+    WHEN c_tabs_100-tab2.
+      IF obj_tcert_man IS BOUND.
+        obj_main->cert_equal( ).
+      ENDIF.
+    WHEN c_tabs_100-tab3.
+      IF obj_tvale_man IS BOUND.
+        obj_main->vale_equal( ).
+      ENDIF.
+  ENDCASE.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_CREA_CLIENTE
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_crea_cliente.
+  DATA: lv_request   TYPE REF TO cl_bupa_navigation_request,
+        lv_bus_roles TYPE bus_roles,
+        ls_tvarv     TYPE tvarvc,
+        lv_group     TYPE bu_group.
+
+  CREATE OBJECT lv_request.
+  CALL METHOD lv_request->set_bupa_creation_type( '1' ).
+
+  CALL METHOD lv_request->set_bupa_activity
+    EXPORTING
+      iv_value = lv_request->gc_activity_create.
+
+  READ TABLE it_newbp INTO ls_tvarv WITH KEY low = 'BU_PARTNERROLE'.
+  IF sy-subrc EQ 0.
+    lv_bus_roles-role = ls_tvarv-high.
+  ENDIF.
+  CALL METHOD lv_request->set_bupa_partner_role( lv_bus_roles ).
+
+  READ TABLE it_newbp INTO ls_tvarv WITH KEY low = 'BU_GROUP'.
+  IF sy-subrc EQ 0.
+    lv_group = ls_tvarv-high.
+  ENDIF.
+  CALL METHOD lv_request->set_bupa_creation_group( lv_group ).
+
+  CALL METHOD cl_bupa_dialog_joel=>start_with_navigation
+    EXPORTING
+      iv_request       = lv_request
+      iv_in_new_window = 'X'.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_CONSULTAR
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_consultar .
+  obj_data->get_data( folio = zfr_convenio-folio
+                      gjahr = zfr_convenio-gjahr
+                      empleado = zfr_convb-empleado
+                      valecert = zfr_convb-folio ).
+  obj_data->refresh( ).
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_CARGA
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_carga .
+  CLEAR gv_cert_imp.
+  CALL SCREEN 0400 STARTING AT 50 1.
+
+  IF obj_certs->it_copiados IS NOT INITIAL.
+    IF zfr_convenio-cert_man IS NOT INITIAL.
+      CLEAR zfr_convenio-cert_man.
+      PERFORM f_importe_manual_certext.
+    ENDIF.
+    zfr_convenio-cert_man = 'X'.
+    PERFORM f_importe_manual_certext.
+  ENDIF.
+
+ENDFORM.

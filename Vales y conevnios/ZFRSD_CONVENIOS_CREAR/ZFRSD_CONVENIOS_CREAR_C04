@@ -1,0 +1,256 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C04
+*&---------------------------------------------------------------------*
+
+CLASS cls_werk DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_werk.
+
+    DATA: it_data          TYPE STANDARD TABLE OF ty_werk,
+          ls_data_selected TYPE ty_werk,
+          tienda           TYPE werks,
+          edit             TYPE c.
+
+    METHODS:
+      get_data,                                     "Inicializa tabla
+      set_data IMPORTING folio TYPE zfr_convfolio
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c,      "Mostrar ALV
+      destroy,
+      set_table IMPORTING werks  TYPE werks_d
+                CHANGING  it_tab TYPE STANDARD TABLE,
+      set_tienda,
+      """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+      handle_user_command REDEFINITION,
+      handle_data_changed_finished REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_insert,
+      row_delete,
+      data_select,
+      data_makeup.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_werk IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD get_data.
+    CLEAR it_data.
+    CALL METHOD data_select.
+    CALL METHOD data_makeup.
+
+    edit = abap_true.
+  ENDMETHOD.                    "get_data
+
+  METHOD set_data.
+    SELECT * FROM zfr_conva
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE folio EQ folio
+        AND gjahr EQ gjahr.
+
+    edit = ''.
+  ENDMETHOD.                    "set_data
+
+  METHOD data_select.
+    DO 1 TIMES.
+      APPEND ls_data_selected TO it_data.
+    ENDDO.
+  ENDMETHOD.                    "data_select
+
+  METHOD data_makeup.
+  ENDMETHOD.                    "data_makeup
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          parent         = obj_tconvenio->container->screen1
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: l_fcat   TYPE lvc_s_fcat,
+          lt_fcat  TYPE STANDARD TABLE OF lvc_s_fcat,
+          v_colpos TYPE i.
+
+    CLEAR l_fcat.
+    l_fcat-fieldname = 'ICON'.
+    l_fcat-col_pos = 0.
+    l_fcat-outputlen = 2.
+    l_fcat-edit = ''.
+    l_fcat-icon = abap_true.
+    APPEND l_fcat TO t_fcat.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVA'
+*       I_CLIENT_NEVER_DISPLAY = abap_true
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    IF sy-subrc EQ 0.
+      LOOP AT lt_fcat INTO l_fcat.
+*      l_fcat-col_opt = abap_true.
+        l_fcat-edit = edit.
+        l_fcat-lowercase = abap_true.
+
+        CASE l_fcat-fieldname.
+          WHEN 'WERKS'.
+            l_fcat-outputlen  = 8.
+            l_fcat-coltext = TEXT-301. "'Tienda'.
+            l_fcat-f4availabl = abap_true.
+            l_fcat-key = abap_true.
+            APPEND l_fcat TO t_fcat.
+          WHEN OTHERS.
+        ENDCASE.
+        ADD 1 TO v_colpos.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.                    "armar_fieldcat
+
+  METHOD row_insert.
+    DATA: ls_data TYPE ty_werk.
+
+    ADD 1 TO gv_line.
+    APPEND ls_data TO it_data.
+    CALL METHOD refresh.
+  ENDMETHOD.                    "ROW_INSERT
+
+  METHOD row_delete.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_werk.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+*      MESSAGE 'Seleccione al menos una linea' TYPE 'S'.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        ls_data-icon = c_delete.
+        MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+      ENDLOOP.
+
+      DELETE it_data WHERE icon EQ c_delete.
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+  ENDMETHOD.                    "ROW_DELETE
+  METHOD handle_user_command.
+
+    IF edit IS NOT INITIAL.
+      CASE e_ucomm.
+        WHEN 'INSERT_ROW'.
+          CALL METHOD row_insert.
+        WHEN 'DELETE_ROW'.
+          CALL METHOD row_delete.
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.                    "handle_user_command
+  METHOD handle_data_changed_finished.
+    DATA: et_cell  LIKE LINE OF et_good_cells,
+          ls_data  TYPE ty_werk,
+          lv_werks TYPE werks_d,
+          lv_ban   TYPE c.
+
+    IF e_modified = abap_true.
+
+      LOOP AT et_good_cells INTO et_cell.
+        READ TABLE it_data INTO ls_data INDEX et_cell-row_id. "Leemos tabla vista
+        IF et_cell-fieldname EQ 'WERKS'.
+          SELECT SINGLE werks FROM t001w INTO lv_werks
+            WHERE werks = ls_data-werks.
+          IF sy-subrc NE 0.
+            MESSAGE s031 WITH ls_data-werks DISPLAY LIKE 'E'.
+            CLEAR ls_data-werks.
+          ELSE.
+            CALL FUNCTION 'ZSDF_CHECK_TIENDA'
+              EXPORTING
+                werks     = ls_data-werks
+              IMPORTING
+                authority = lv_ban.
+            IF lv_ban IS NOT INITIAL.
+              MESSAGE s071 WITH ls_data-werks DISPLAY LIKE 'E'.
+              CLEAR ls_data-werks.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        MODIFY it_data FROM ls_data INDEX et_cell-row_id.
+      ENDLOOP.
+
+      refresh( ).
+    ENDIF.
+  ENDMETHOD.                    "HANDLE_DATA_CHANGED_FINISHED
+
+  METHOD destroy.
+    CALL METHOD v_alv->free.
+  ENDMETHOD.
+
+  METHOD set_table.
+    DATA: it_temp TYPE STANDARD TABLE OF ty_werk,
+          ls_data TYPE ty_werk.
+    it_temp[] = it_tab[].
+    CLEAR it_data.
+
+    DELETE it_temp INDEX 1.
+    IF werks IS NOT INITIAL.
+      ls_data-werks = werks.
+      APPEND ls_data TO it_data.
+    ENDIF.
+
+    LOOP AT it_temp INTO ls_data.
+      IF ls_data-werks NE werks.
+        APPEND ls_data TO it_data.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD set_tienda.
+    DATA: ls_data TYPE ty_werk.
+    READ TABLE it_data INTO ls_data INDEX 1.
+    IF sy-subrc EQ 0.
+      tienda = ls_data-werks.
+    ELSE.
+      CLEAR tienda.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

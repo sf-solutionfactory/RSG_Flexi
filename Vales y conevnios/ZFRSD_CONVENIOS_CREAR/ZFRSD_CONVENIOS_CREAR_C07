@@ -1,0 +1,563 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C07
+*&---------------------------------------------------------------------*
+
+CLASS cls_query DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_cond.
+
+    DATA: it_data TYPE STANDARD TABLE OF ty_query,
+          edit    TYPE c.
+
+    METHODS:
+      get_data IMPORTING folio    TYPE zfr_convfolio
+                         gjahr    TYPE gjahr
+                         empleado TYPE zfr_empleado
+                         valecert TYPE zfr_convfolio,                                     "Inicializa datos
+      set_data IMPORTING folio TYPE zfr_convfolio   "Carga de datos
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c,      "Mostrar ALV
+      destroy,
+      gen_xml,
+      gen_xml2,
+      """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+****       MANEJAODRES DE EVENTOS
+*      handle_before_user_command REDEFINITION,
+*      handle_button_click REDEFINITION,
+*      handle_double_click REDEFINITION,
+*      handle_onf4 REDEFINITION,
+      handle_toolbar REDEFINITION,
+      handle_user_command REDEFINITION
+*      handle_data_changed_finished REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_validate,
+      row_cancel,
+      data_select IMPORTING folio    TYPE zfr_convfolio
+                            gjahr    TYPE gjahr
+                            empleado TYPE zfr_empleado
+                            valecert TYPE zfr_convfolio,
+      data_makeup,
+      validar_bene IMPORTING ls_data     TYPE ty_query
+                   RETURNING VALUE(vale) TYPE string,
+      generar_vale CHANGING ls_data TYPE ty_query,
+      cancela_bene CHANGING ls_data TYPE ty_query.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_query IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD get_data.
+    CLEAR it_data.
+    CALL METHOD data_select
+      EXPORTING
+        folio    = folio
+        gjahr    = gjahr
+        empleado = empleado
+        valecert = valecert.
+    CALL METHOD data_makeup.
+
+    edit = abap_false.
+  ENDMETHOD.
+
+  METHOD set_data.
+    SELECT * FROM zfr_convp
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE folio EQ folio
+        AND gjahr EQ gjahr.
+
+    edit = abap_false.
+  ENDMETHOD.                    "set_data
+
+  METHOD data_select.
+    DATA: lt_conv  TYPE STANDARD TABLE OF zfr_convenio.
+    DATA: rg_folio TYPE RANGE OF zfr_convfolio,
+          rg_emple TYPE RANGE OF zfr_empleado,
+          rg_vales TYPE RANGE OF zfr_convfolio,
+          ls_folio LIKE LINE OF rg_folio,
+          ls_emple LIKE LINE OF rg_emple,
+          ls_vales LIKE LINE OF rg_vales.
+
+    IF folio IS INITIAL AND empleado IS INITIAL AND valecert IS INITIAL.
+      MESSAGE e108.
+    ENDIF.
+
+    IF folio IS NOT INITIAL.
+      ls_folio-sign = 'I'.
+      ls_folio-option = 'EQ'.
+      ls_folio-low = folio.
+      APPEND ls_folio TO rg_folio.
+    ENDIF.
+    IF empleado IS NOT INITIAL.
+      ls_emple-sign = 'I'.
+      ls_emple-option = 'EQ'.
+      ls_emple-low = empleado.
+      APPEND ls_emple TO rg_emple.
+    ENDIF.
+    IF valecert IS NOT INITIAL.
+      ls_vales-sign = 'I'.
+      ls_vales-option = 'EQ'.
+      ls_vales-low = valecert.
+      APPEND ls_vales TO rg_vales.
+    ENDIF.
+
+
+    SELECT * FROM zfr_convenio INTO TABLE lt_conv
+      WHERE convenio EQ folio
+        AND convgjhr EQ gjahr
+        AND cert_ext NE 'X'.
+    SELECT * FROM zfr_convenio APPENDING TABLE lt_conv
+      WHERE folio EQ folio
+        AND gjahr EQ gjahr
+        AND cert_ext NE 'X'.
+
+
+    IF lt_conv IS NOT INITIAL.
+      SELECT * FROM zfr_convenio AS h
+        INNER JOIN zfr_convb AS b
+        ON h~folio = b~folio
+        AND h~gjahr = b~gjahr
+        INTO CORRESPONDING FIELDS OF TABLE it_data
+        FOR ALL ENTRIES IN lt_conv
+        WHERE h~folio EQ lt_conv-folio
+          AND h~folio  IN rg_vales
+          AND empleado IN rg_emple
+          AND cert_ext NE 'X'.
+    ELSE.
+      SELECT * FROM zfr_convenio AS h
+        INNER JOIN zfr_convb AS b
+        ON h~folio = b~folio
+        AND h~gjahr = b~gjahr
+        INTO CORRESPONDING FIELDS OF TABLE it_data
+          WHERE h~folio  IN rg_vales
+          AND empleado IN rg_emple
+          AND cert_ext NE 'X'.
+    ENDIF.
+
+  ENDMETHOD.                    "data_select
+
+  METHOD data_makeup.
+  ENDMETHOD.                    "data_makeup
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+    t_layo-sel_mode = 'B'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: ls_fcat   TYPE lvc_s_fcat,
+          lt_fcat   TYPE STANDARD TABLE OF lvc_s_fcat,
+          lv_colpos TYPE i.
+
+**    CLEAR ls_fcat.
+**    ls_fcat-fieldname = 'ICON'.
+**    ls_fcat-col_pos = 0.
+**    ls_fcat-outputlen = 2.
+**    ls_fcat-edit = ''.
+**    ls_fcat-icon = abap_true.
+**    APPEND ls_fcat TO t_fcat.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVENIO'
+*       I_CLIENT_NEVER_DISPLAY = 'X'
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    IF sy-subrc EQ 0.
+      LOOP AT lt_fcat INTO ls_fcat.
+*      ls_fcat-col_opt = abap_true.
+        ls_fcat-edit = edit.
+        ls_fcat-lowercase = abap_true.
+
+        CASE ls_fcat-fieldname.
+          WHEN 'FOLIO'.
+            ls_fcat-col_pos    = 2.
+            ls_fcat-outputlen = 17.
+            ls_fcat-coltext = TEXT-cup.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'GJAHR'.
+            ls_fcat-col_pos    = 3.
+            ls_fcat-outputlen = 4.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'SGTXT'.
+*          ls_fcat-col_opt = abap_true.
+            ls_fcat-key = abap_true.
+            ls_fcat-col_pos    = 4.
+            ls_fcat-outputlen = 30.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'DATAB'.
+            ls_fcat-col_pos = 8.
+            ls_fcat-outputlen = 10.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'DATBI'.
+            ls_fcat-col_pos = 9.
+            ls_fcat-outputlen = 10.
+            APPEND ls_fcat TO t_fcat.
+          WHEN OTHERS.
+        ENDCASE.
+        ADD 1 TO lv_colpos.
+      ENDLOOP.
+    ENDIF.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVB'
+*       I_CLIENT_NEVER_DISPLAY = 'X'
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    IF sy-subrc EQ 0.
+      LOOP AT lt_fcat INTO ls_fcat.
+*      ls_fcat-col_opt = abap_true.
+        ls_fcat-edit = edit.
+        ls_fcat-lowercase = abap_true.
+
+        CASE ls_fcat-fieldname.
+          WHEN 'EMPLEADO'.
+            ls_fcat-col_pos    = 5.
+*          ls_fcat-col_opt = abap_true.
+            ls_fcat-key = abap_false.
+            ls_fcat-outputlen = 15.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'NOMBRE'.
+            ls_fcat-col_pos    = 6.
+*          ls_fcat-col_opt = abap_true.
+            ls_fcat-outputlen = 30.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'KUNNR'.
+            CLEAR ls_fcat.
+            ls_fcat-fieldname = 'KUNNR'.
+            ls_fcat-col_pos    = 7.
+*            ls_fcat-col_opt = abap_true.
+            ls_fcat-outputlen = 10.
+            ls_fcat-ref_field = 'PARTNER'.
+            ls_fcat-ref_table = 'BUT000'.
+            APPEND ls_fcat TO t_fcat.
+          WHEN 'EMPRESA'.
+*          ls_fcat-f4availabl = 'X'.
+            ls_fcat-coltext = TEXT-emp.
+            ls_fcat-outputlen = 30.
+            ls_fcat-col_pos    = 8.
+            APPEND ls_fcat TO t_fcat.
+          WHEN OTHERS.
+        ENDCASE.
+        ADD 1 TO lv_colpos.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.                    "armar_fieldcat
+
+  METHOD row_validate.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_query.
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        IF sy-subrc EQ 0 AND ls_data-type EQ '01'.
+          DATA: lv_mensaje TYPE string,
+                lv_answ    TYPE c,
+                lv_vale    TYPE string.
+
+          lv_vale = validar_bene( ls_data ).
+
+          IF lv_vale IS NOT INITIAL.
+**            CONCATENATE 'El bebeficiario' ls_data-empleado 'tiene el vale' lv_vale
+**                        'activo, ¿Desea generar folio en tienda?'
+**                        INTO lv_mensaje SEPARATED BY space.
+            MESSAGE e107 WITH ls_data-empleado lv_vale INTO lv_mensaje.
+
+            CALL FUNCTION 'POPUP_TO_CONFIRM'
+              EXPORTING
+                text_question  = lv_mensaje
+              IMPORTING
+                answer         = lv_answ
+              EXCEPTIONS
+                text_not_found = 1
+                OTHERS         = 2.
+            IF sy-subrc <> 0.
+* Implement suitable error handling here
+            ENDIF.
+
+            IF lv_answ EQ '1'.
+              generar_vale( CHANGING ls_data = ls_data ).
+            ENDIF.
+
+            MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+  ENDMETHOD.                    "row_validate
+
+  METHOD row_cancel.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_query.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        IF sy-subrc EQ 0.
+          cancela_bene( CHANGING ls_data = ls_data ).
+
+          MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+        ENDIF.
+      ENDLOOP.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+  ENDMETHOD.                    "row_cancel
+
+  METHOD handle_toolbar.
+    DATA:ls_toolbar     TYPE stb_button,
+         is_disabled(1) TYPE c.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'VALIDATE'.
+    ls_toolbar-quickinfo = TEXT-val.
+    ls_toolbar-text = TEXT-val.
+    ls_toolbar-icon = icon_check.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 2.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'CANCEL'.
+    ls_toolbar-quickinfo = TEXT-can.
+    ls_toolbar-text = TEXT-can.
+    ls_toolbar-icon = icon_cancel.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 3.
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+**    IF edit IS NOT INITIAL.
+    CASE e_ucomm.
+      WHEN 'VALIDATE'.
+        CALL METHOD row_validate.
+      WHEN 'CANCEL'.
+        CALL METHOD row_cancel.
+    ENDCASE.
+**    ENDIF.
+  ENDMETHOD.                    "handle_user_command
+
+  METHOD destroy.
+    CALL METHOD v_alv->free.
+  ENDMETHOD.
+
+  METHOD validar_bene.
+    vale = '000121212'.
+  ENDMETHOD.
+
+  METHOD generar_vale.
+    DATA: lv_conv TYPE REF TO cls_convenio,
+          ls_conv TYPE zfr_convenio,
+          lv_ban  TYPE c,
+          lt_bene TYPE STANDARD TABLE OF ty_excel,
+          ls_bene TYPE ty_excel.
+    CREATE OBJECT lv_conv.
+
+    SELECT SINGLE * FROM zfr_convenio INTO ls_conv
+      WHERE folio EQ ls_data-folio
+        AND gjahr EQ ls_data-gjahr.
+    IF sy-subrc EQ 0 AND ls_conv-type EQ gv_conv.
+      ls_conv-type = gv_vale.
+      ls_conv-convenio = ls_conv-folio.
+      ls_conv-convgjhr = ls_conv-gjahr.
+      lv_conv->gs_consulta = abap_true.
+      CLEAR ls_conv-folio.
+      ls_conv-datab = sy-datum.
+      ls_conv-datbi = sy-datum.
+      CLEAR: ls_conv-lim_acu,
+             ls_conv-lim_gjr,
+             ls_conv-lim_per,
+             ls_conv-lim_pur,
+             ls_conv-lim_val,
+             ls_conv-desc_type.
+      ls_conv-vale_num = 1.
+      lv_conv->init_info( ls_conv ).
+*      lv_ban = lv_conv->validar_convenio( lv_conv->gs_info-type ).
+
+      IF lv_ban IS INITIAL.
+        ls_bene-empleado = ls_data-empleado.
+        ls_bene-name = ls_data-nombre.
+        ls_bene-empresa = ls_data-empresa.
+        ls_bene-email = ls_data-email.
+        ls_bene-phone = ls_data-phone.
+        APPEND ls_bene TO lt_bene.
+
+        lv_conv->set_bene( lt_bene ).
+
+        lv_conv->set_folio( ).
+        lv_conv->save_conv( ).
+      ENDIF.
+**      MESSAGE 'Vale generado' TYPE 'S'.
+      MESSAGE s110.
+      ls_data-folio = ls_data-folio.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD cancela_bene.
+    ls_data-empresa = 'Cancelado'.
+  ENDMETHOD.
+
+  METHOD gen_xml.
+    DATA: wa_head   TYPE zfres_conv_head,
+          wa_prop   TYPE zfres_conv_prop,
+          lv_result TYPE string.
+
+    wa_head-id              = 'REFERENCE_GIFT_CERT_SERVICE'.
+    wa_head-connectionurl   = 'http://192.168.100.20:8088/services/GkrHoGcsOnlineSaleWSFacade'.
+    wa_head-timeout         = '5000'.
+    wa_head-username        = ''.
+    wa_head-password        = ''.
+    wa_head-httpversion     = '1.1'.
+    wa_head-chunkedencoding = 'true'.
+    wa_head-useproxy        = 'false'.
+    wa_head-enabled         = 'false'.
+
+    CLEAR wa_prop.
+    wa_prop-key = 'externalTransactionId'.
+    wa_prop-value = 'TestUUID-'.
+    APPEND wa_prop TO wa_head-properties.
+    CLEAR wa_prop.
+    wa_prop-key = 'companyId'.
+    wa_prop-value = 'EUROSHOP'.
+    APPEND wa_prop TO wa_head-properties.
+    CLEAR wa_prop.
+    wa_prop-key = 'storeNumber'.
+    wa_prop-value = '9052705287'.
+    APPEND wa_prop TO wa_head-properties.
+    CLEAR wa_prop.
+    wa_prop-key = 'country'.
+    wa_prop-value = 'GER'.
+    APPEND wa_prop TO wa_head-properties.
+
+    CALL  TRANSFORMATION zfr_convenio_xml SOURCE service = wa_head  RESULT XML lv_result.
+  ENDMETHOD.
+
+  METHOD gen_xml2.
+    DATA: ls_promol TYPE zfres_conv_promol,
+          ls_promo  TYPE zfres_conv_promo,
+          ls_eligi  TYPE zfres_conv_elig,
+          ls_item   TYPE zfres_conv_item,
+          ls_coup   TYPE zfres_conv_coupon,
+          ls_rule   TYPE zfres_conv_rule,
+          lv_id(32) TYPE c,
+
+          lv_result TYPE string.
+
+    ls_promol-version             = '1.6.0'.
+    ls_promol-numberofpromotions  = '1'.
+    ls_promol-globalchangetype    = 'MODIFY'.
+    ls_promol-xmlns               = 'http://www.gk-software.com/masterdata/rebate/1.6'.
+
+    ls_promo-changetype         = 'MODIFY'.
+    ls_promo-numberofconditions = '1'.
+
+    ls_promo-id                 = '5'.
+    ls_promo-description        = 'Test cupón 9780201379624'.
+    ls_promo-origin             = '01'.
+    ls_promo-effectivedate      = '2019-07-29T00:00:00'.
+    ls_promo-expirydate         = '2019-08-02T01:59:59'.
+    ls_promo-receiptprintername = 'Cupón -10%'.
+
+    ls_promo-condition-sequence           = '1'.
+    ls_promo-condition-resolution         = '1'.
+    ls_promo-condition-typecode           = 'ZCOU'.
+    ls_promo-condition-notshowingflag     = 'false'.
+    ls_promo-condition-salereturntypecode = '00'.
+
+    lv_id = '1590000040'.
+    APPEND lv_id TO ls_item-idlist.
+    ls_item-typecode          = 'QUT'.
+    ls_item-thresholdquantity = '1.000'.
+    ls_item-limitquantity     = '1.000'.
+    ls_eligi-item             = ls_item.
+    APPEND ls_eligi TO ls_promo-condition-eligibility.
+    CLEAR ls_eligi.
+
+    lv_id = '9780201379617'.
+    APPEND lv_id TO ls_coup-idlist.
+    ls_coup-consumptiontypecode = '01'.
+    ls_eligi-coupon             = ls_coup.
+    APPEND ls_eligi TO ls_promo-condition-eligibility.
+    CLEAR ls_eligi.
+
+    ls_promo-condition-rule-transactioncontrolcode  = 'PO'.
+    ls_promo-condition-rule-roundingmethodcode      = '00'.
+    ls_promo-condition-rule-decimalplacescount      = '2'.
+    ls_promo-condition-rule-normalrebate            = ''.
+    ls_promo-condition-rule-calculationbase         = '00'.
+    ls_promo-condition-rule-reductionmethodcode     = '00'.
+    ls_promo-condition-rule-value                   = '50.0'.
+
+    APPEND ls_promo TO ls_promol-list.
+
+
+    CALL  TRANSFORMATION zfr_conveniop_xml SOURCE promol = ls_promol  RESULT XML lv_result.
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

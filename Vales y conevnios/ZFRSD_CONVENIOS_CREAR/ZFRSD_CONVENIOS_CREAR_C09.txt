@@ -1,0 +1,371 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C08
+*&---------------------------------------------------------------------*
+
+CLASS cls_certs DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_certs.
+
+    DATA: it_data          TYPE STANDARD TABLE OF zfr_convenio,
+          ls_data_selected TYPE zfr_convenio,
+          it_copiados      TYPE STANDARD TABLE OF zfr_convenio,
+          it_temp          TYPE STANDARD TABLE OF zfr_convenio,
+          edit             TYPE c,
+          parent           TYPE REF TO cl_gui_container.
+
+    METHODS:
+      get_data,                                     "Inicializa tabla
+      set_data IMPORTING folio TYPE zfr_convfolio
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c
+                            parent     TYPE REF TO cl_gui_container,      "Mostrar ALV
+      destroy,
+      copia_cert RETURNING VALUE(error) TYPE char01,
+      """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+*****       MANEJAODRES DE EVENTOS
+*      handle_before_user_command REDEFINITION,
+*      handle_button_click REDEFINITION,
+*      handle_double_click REDEFINITION,
+*      handle_onf4 REDEFINITION,
+      handle_toolbar REDEFINITION,
+      handle_user_command REDEFINITION,
+      handle_data_changed_finished REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_insert,
+      row_delete,
+      data_select,
+      data_makeup.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_certs IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD get_data.
+    CLEAR it_data.
+    CALL METHOD data_select.
+    CALL METHOD data_makeup.
+
+*    edit = abap_true.
+  ENDMETHOD.                    "get_data
+
+  METHOD set_data.
+    SELECT * FROM zfr_convenio
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE cert_ext EQ 'X'
+        AND convenio IS NULL
+        AND convgjhr IS NULL .
+
+    edit = ''.
+  ENDMETHOD.                    "set_data
+
+  METHOD data_select.
+    SELECT * FROM zfr_convenio
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE cert_ext EQ 'X'
+        AND convenio EQ 0
+        AND convgjhr EQ 0 .
+
+    edit = ''.
+  ENDMETHOD.                    "data_select
+
+  METHOD data_makeup.
+    LOOP AT it_copiados INTO ls_data_selected.
+      READ TABLE it_data TRANSPORTING NO FIELDS WITH KEY folio = ls_data_selected-folio
+                                                         gjahr = ls_data_selected-gjahr.
+      IF sy-subrc EQ 0.
+        DELETE it_data WHERE folio = ls_data_selected-folio
+                         AND gjahr = ls_data_selected-gjahr.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.                    "data_makeup
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          parent         = parent
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: l_fcat   TYPE lvc_s_fcat,
+          lt_fcat  TYPE STANDARD TABLE OF lvc_s_fcat,
+          v_colpos TYPE i.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVENIO'
+*       I_CLIENT_NEVER_DISPLAY = abap_true
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    IF sy-subrc EQ 0.
+      LOOP AT lt_fcat INTO l_fcat.
+        l_fcat-col_opt = abap_true.
+        l_fcat-edit = edit.
+        l_fcat-lowercase = abap_true.
+
+        CASE l_fcat-fieldname.
+          WHEN 'FOLIO'.
+            l_fcat-col_pos = 1.
+*            l_fcat-outputlen  = 8.
+*            l_fcat-f4availabl = abap_true.
+            l_fcat-key = abap_true.
+            APPEND l_fcat TO t_fcat.
+          WHEN 'CERT_FOLIO'.
+            l_fcat-col_pos = 2.
+*            l_fcat-outputlen  = 8.
+*            l_fcat-f4availabl = abap_true.
+*            l_fcat-key = abap_true.
+            APPEND l_fcat TO t_fcat.
+          WHEN 'CERT_VAL'.
+            l_fcat-col_pos = 3.
+            l_fcat-edit = abap_true.
+            l_fcat-no_zero = abap_false.
+*            l_fcat-outputlen  = 8.
+*            l_fcat-f4availabl = abap_true.
+*            l_fcat-key = abap_true.
+            APPEND l_fcat TO t_fcat.
+          WHEN OTHERS.
+        ENDCASE.
+        ADD 1 TO v_colpos.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.                    "armar_fieldcat
+
+  METHOD row_insert.
+    DATA: ls_data TYPE zfr_convenio.
+
+    ADD 1 TO gv_line.
+    APPEND ls_data TO it_data.
+    CALL METHOD refresh.
+  ENDMETHOD.                    "ROW_INSERT
+
+  METHOD row_delete.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE zfr_convenio.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+*      MESSAGE 'Seleccione al menos una linea' TYPE 'S'.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+**        ls_data-icon = c_delete.
+        MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+      ENDLOOP.
+
+**      DELETE it_data WHERE icon EQ c_delete.
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+  ENDMETHOD.                    "ROW_DELETE
+
+  METHOD handle_toolbar.
+  ENDMETHOD.
+
+  METHOD handle_user_command.
+
+    IF edit IS NOT INITIAL.
+      CASE e_ucomm.
+        WHEN 'INSERT_ROW'.
+**          CALL METHOD row_insert.
+        WHEN 'DELETE_ROW'.
+**          CALL METHOD row_delete.
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.                    "handle_user_command
+  METHOD handle_data_changed_finished.
+    DATA: et_cell   LIKE LINE OF et_good_cells,
+          ls_data   TYPE zfr_convenio,
+          lv_vkorgs TYPE vkorg,
+          lv_ban    TYPE c.
+
+    IF e_modified = abap_true.
+
+      LOOP AT et_good_cells INTO et_cell.
+        READ TABLE it_data INTO ls_data INDEX et_cell-row_id. "Leemos tabla vista
+        IF et_cell-fieldname EQ 'VKORG'.
+          SELECT SINGLE vkorg FROM tvko INTO lv_vkorgs
+            WHERE vkorg = ls_data-vkorg.
+          IF sy-subrc NE 0.
+            MESSAGE s031 WITH ls_data-vkorg DISPLAY LIKE 'E'.
+            CLEAR ls_data-vkorg.
+          ELSE.
+            CLEAR lv_ban.
+            PERFORM valida_vkorg USING zfr_convenio-kunnr ls_data-vkorg
+                                       gv_vtweg gv_spart
+                                 CHANGING lv_ban.
+            IF lv_ban IS NOT INITIAL.
+              MESSAGE s071 WITH ls_data-vkorg DISPLAY LIKE 'E'.
+              CLEAR ls_data-vkorg.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        MODIFY it_data FROM ls_data INDEX et_cell-row_id.
+      ENDLOOP.
+
+      refresh( ).
+    ENDIF.
+  ENDMETHOD.                    "HANDLE_DATA_CHANGED_FINISHED
+
+  METHOD destroy.
+    CALL METHOD v_alv->free.
+  ENDMETHOD.
+
+  METHOD copia_cert.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE zfr_convenio.
+
+    CLEAR it_temp.
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+      error = 'X'.
+    ELSE.
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        MODIFY it_data FROM ls_data INDEX ls_row-row_id.
+        IF ls_data-cert_val IS INITIAL.
+          ls_data-cert_val = gv_cert_imp.
+        ENDIF.
+        APPEND ls_data TO it_temp.
+      ENDLOOP.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+
+    gv_cert_temp = gv_cert_imp.
+    LOOP AT it_temp INTO ls_data.
+      IF ls_data-cert_val IS INITIAL.
+        CLEAR gv_cert_imp.
+        EXIT.
+      ELSE.
+        gv_cert_imp = ls_data-cert_val.
+      ENDIF.
+    ENDLOOP.
+    IF gv_cert_imp IS NOT INITIAL.
+      APPEND LINES OF it_temp TO it_copiados.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION
+
+FORM valida_vkorg USING kunnr TYPE kunnr
+                        vkorg TYPE vkorg
+                        vtweg TYPE vtweg
+                        spart TYPE spart
+                  CHANGING error TYPE char01.
+  CLEAR error.
+  DATA: ls_knvh    TYPE knvh,
+        lt_knvp    TYPE STANDARD TABLE OF knvp,
+        lv_symsgv  TYPE symsgv,
+        lv_symsgv2 TYPE symsgv.
+
+  CLEAR ls_knvh.
+  SELECT SINGLE * FROM knvh INTO ls_knvh
+        WHERE kunnr EQ kunnr
+          AND vkorg EQ vkorg
+          AND vtweg EQ vtweg
+          AND spart EQ spart
+          AND datab LE sy-datum
+          AND datbi GE sy-datum.
+
+  IF sy-subrc NE 0.
+    CLEAR gv_mess.
+    lv_symsgv = kunnr.
+    lv_symsgv2 = vkorg.
+    CALL FUNCTION 'MESSAGE_PREPARE'
+      EXPORTING
+        msg_id                 = 'VC'
+        msg_no                 = '043'
+        msg_var1               = lv_symsgv
+        msg_var2               = lv_symsgv2
+      IMPORTING
+        msg_text               = gv_mess
+      EXCEPTIONS
+        function_not_completed = 1
+        message_not_found      = 2
+        OTHERS                 = 3.
+    IF sy-subrc EQ 0.
+      MESSAGE gv_mess TYPE 'I'.
+      error = 'X'.
+    ENDIF.
+  ELSE.
+
+    SELECT * FROM knvp INTO TABLE lt_knvp
+  FOR ALL ENTRIES IN it_tpar
+  WHERE kunnr EQ kunnr
+    AND vkorg EQ vkorg
+    AND vtweg EQ vtweg
+    AND spart EQ spart
+    AND parvw EQ it_tpar-parvw.
+
+    IF sy-subrc NE 0.
+      CLEAR gv_mess.
+      lv_symsgv = kunnr.
+      lv_symsgv2 = vkorg.
+      CALL FUNCTION 'MESSAGE_PREPARE'
+        EXPORTING
+          msg_id                 = 'VC'
+          msg_no                 = '043'
+          msg_var1               = lv_symsgv
+          msg_var2               = lv_symsgv2
+        IMPORTING
+          msg_text               = gv_mess
+        EXCEPTIONS
+          function_not_completed = 1
+          message_not_found      = 2
+          OTHERS                 = 3.
+      IF sy-subrc EQ 0.
+        MESSAGE gv_mess TYPE 'I'.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*
