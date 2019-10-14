@@ -1,0 +1,153 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_TOP
+*&---------------------------------------------------------------------*
+*& Declaraciones                                                       *
+*&---------------------------------------------------------------------*
+
+"TABLAS
+TABLES: kna1, rlgrap, zfr_convenio, zfr_conva, zfr_convb.
+
+"TIPOS
+TYPES: BEGIN OF ty_cond.
+    INCLUDE STRUCTURE zfr_convp.
+TYPES: icon    TYPE mepo1232-icon02,
+       celltab TYPE lvc_t_styl,
+       END OF ty_cond,
+
+       BEGIN OF ty_manu,
+         posnr(10)  TYPE c,
+         cert_num   TYPE zfr_certnum,
+         cert_val   TYPE wrbtr,
+         folio      TYPE zfr_convfolio,
+         cert_folio TYPE zfr_folioext,
+
+         icon       TYPE mepo1232-icon02,
+         celltab    TYPE lvc_t_styl,
+       END OF ty_manu,
+
+       BEGIN OF ty_werk,
+         posnr   TYPE posnr,
+         werks   TYPE werks_d,
+
+         icon    TYPE mepo1232-icon02,
+         celltab TYPE lvc_t_styl,
+       END OF ty_werk,
+
+       BEGIN OF ty_vkorg,
+         posnr   TYPE posnr,
+         vkorg   TYPE vkorg,
+
+         icon    TYPE mepo1232-icon02,
+         celltab TYPE lvc_t_styl,
+       END OF ty_vkorg,
+
+       BEGIN OF ty_excel,
+         empleado TYPE string,
+         name     TYPE string,
+         empresa  TYPE string,
+         email    TYPE string,
+         phone    TYPE string,
+         borrar   TYPE c,
+       END OF ty_excel,
+
+       BEGIN OF ty_certs,
+         folio   TYPE string,
+         cliente TYPE kunnr,
+       END OF ty_certs,
+
+       BEGIN OF ty_bene.
+    INCLUDE STRUCTURE zfr_convb.
+TYPES: icon    TYPE mepo1232-icon02,
+       celltab TYPE lvc_t_styl,
+       END OF ty_bene,
+
+       BEGIN OF ty_query,
+         folio      TYPE zfr_convfolio,
+         gjahr      TYPE gjahr,
+         sgtxt      TYPE sgtxt,
+         type       TYPE zfr_convtype,
+         convenio   TYPE  zfr_convfolio,
+         vale_folio TYPE zfr_convfolio,
+         empleado   TYPE zfr_empleado,
+         nombre     TYPE zfr_emplname,
+         email      TYPE string,
+         phone      TYPE string,
+         kunnr      TYPE bu_partner,
+         empresa    TYPE name1,
+         datab      TYPE datab,
+         datbi      TYPE datbi,
+       END OF ty_query
+       .
+
+"CONSTANTES
+CONSTANTS: c_red    TYPE mepo_status-icon01  VALUE '@5C@',
+           c_delete TYPE mepo_status-icon01  VALUE '@11@'.
+CONSTANTS: BEGIN OF c_tabs_100,
+             tab1 LIKE sy-ucomm VALUE 'TABS_100_FC1',
+             tab2 LIKE sy-ucomm VALUE 'TABS_100_FC2',
+             tab3 LIKE sy-ucomm VALUE 'TABS_100_FC3',
+             tab4 LIKE sy-ucomm VALUE 'TABS_100_FC4',
+           END OF c_tabs_100.
+
+CONTROLS:  tabs_100 TYPE TABSTRIP.
+
+"TABLAS INTERNAS
+DATA:
+  it_tiendas TYPE STANDARD TABLE OF ty_werk,
+  it_ventas  TYPE STANDARD TABLE OF ty_vkorg,
+  it_tpar    TYPE STANDARD TABLE OF tpar.
+
+"VARIABLES
+DATA: gv_ok_code  LIKE sy-ucomm, "Pantalla principal
+      gv_ok_codet LIKE sy-ucomm. "Pantalla tiendas
+
+DATA: gv_btn_tienda(100) TYPE c,
+      gv_btn_ventas(100) TYPE c,
+      gv_cert_datab      TYPE datum,
+      gv_cert_datbi      TYPE datum,
+      gv_certc_datab     TYPE datum,
+      gv_certc_datbi     TYPE datum,
+      gv_vale_datab      TYPE datum,
+      gv_vale_datbi      TYPE datum,
+      gv_print           TYPE c,
+      gv_name1           TYPE name1,
+      gv_cert_imp        TYPE wrbtr,
+      gv_cert_temp       TYPE wrbtr.
+DATA: gv_line  TYPE i.
+
+DATA: BEGIN OF g_tabs_100,
+        subscreen   LIKE sy-dynnr,
+        prog        LIKE sy-repid VALUE 'ZFRSD_CONVENIOS_CREAR',
+        pressed_tab LIKE sy-ucomm VALUE c_tabs_100-tab1,
+      END OF g_tabs_100.
+
+DATA: gv_conv      TYPE zfr_convtype,
+      gv_cert      TYPE zfr_convtype,
+      gv_vale      TYPE zfr_convtype,
+      gv_vtweg     TYPE vtweg,
+      gv_spart     TYPE spart,
+      gv_custhityp TYPE hityp_kh,
+      it_newbp     TYPE STANDARD TABLE OF tvarvc,
+      it_bupa      TYPE STANDARD TABLE OF tvarvc,
+      it_knvp      TYPE STANDARD TABLE OF tvarvc,
+      gv_mess      TYPE string.
+
+"OBJETOS
+CLASS cls_cond DEFINITION DEFERRED.
+CLASS cls_manu DEFINITION DEFERRED.
+CLASS cls_werk DEFINITION DEFERRED.
+CLASS cls_vkorg DEFINITION DEFERRED.
+CLASS cls_query DEFINITION DEFERRED.
+CLASS cls_certs DEFINITION DEFERRED.
+CLASS lcl_main DEFINITION DEFERRED.
+
+DATA: obj_main      TYPE REF TO lcl_main.
+DATA: obj_data      TYPE REF TO cls_query,
+      obj_tconvenio TYPE REF TO cls_cond,
+      obj_tcertific TYPE REF TO cls_cond,
+      obj_tcert_man TYPE REF TO cls_manu,
+      obj_tvales    TYPE REF TO cls_cond,
+      obj_tvale_man TYPE REF TO cls_manu,
+      obj_tiendas   TYPE REF TO cls_werk,
+      obj_ventas    TYPE REF TO cls_vkorg,
+      obj_certs     TYPE REF TO cls_certs.

@@ -1,0 +1,35 @@
+*&---------------------------------------------------------------------*
+*& Report ZFRSD_CONVENIOS_CREAR
+*----------------------------------------------------------------------*
+* Programa             : ZFRSD_CONVENIOS_CREAR|||||||                  *
+* Descripción          : Crear vales y convenios                       *
+*                                                                      *
+* Programa STD Base    :                                               *
+* Consultor Funcional  : Guillermo Ornelas                             *
+* Desarrollador        : Rogelio Sánchez    (HMEDINA)                  *
+* Diseñador Técnico    : Guillermo Ornelas                             *
+* Creation Date        : 09.08.2019                                    *
+* ID Componente        :                                               *
+*----------------------------------------------------------------------*
+
+REPORT zfrsd_convenios_crear
+MESSAGE-ID zfr_convenios.
+
+INCLUDE zfrsd_convenios_crear_top.    "Declaraciones
+INCLUDE zfrsd_convenios_crear_c02.    "Condiciones
+INCLUDE zfrsd_convenios_crear_c09.    "Certificados externos
+INCLUDE zfrsd_convenios_crear_c03.    "Importes manuales
+INCLUDE zfrsd_convenios_crear_c04.    "Tiendas
+INCLUDE zfrsd_convenios_crear_c05.    "Convenios
+INCLUDE zfrsd_convenios_crear_c06.    "Excel
+INCLUDE zfrsd_convenios_crear_c07.    "Consulta
+INCLUDE zfrsd_convenios_crear_c08.    "Org. ventas
+INCLUDE zfrsd_convenios_crear_c01.    "Main
+INCLUDE zfrsd_convenios_crear_f01.    "Pantalla principal
+INCLUDE zfrsd_convenios_crear_f02.    "Pantalla tiendas
+INCLUDE zfrsd_convenios_crear_f03.    "Pantalla org de ventas
+INCLUDE zfrsd_convenios_crear_f04.    "Pantalla cert externo
+
+START-OF-SELECTION.
+
+  CALL SCREEN 0100.
