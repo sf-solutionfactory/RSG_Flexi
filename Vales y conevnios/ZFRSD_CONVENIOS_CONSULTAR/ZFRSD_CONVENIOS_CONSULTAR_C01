@@ -1,0 +1,132 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_C01
+*&---------------------------------------------------------------------*
+CLASS lcl_main DEFINITION." CREATE PRIVATE.
+
+  PUBLIC SECTION.
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO lcl_main.
+
+    METHODS: run,
+      update.
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+    METHODS:
+      initialize.
+
+ENDCLASS.
+
+CLASS lcl_main IMPLEMENTATION.
+
+  METHOD create.
+
+    CREATE OBJECT r_result.
+
+  ENDMETHOD.
+
+  METHOD run.
+    initialize( ).
+
+    CREATE OBJECT obj_tconvenio.
+    obj_tconvenio->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+    obj_tconvenio->alv_mostrar( contenedor = 'CC_CONV').
+
+    IF gv_type EQ '02'.
+      g_tabs_100-pressed_tab = c_tabs_100-tab2.
+
+      CREATE OBJECT obj_tcertific.
+      obj_tcertific->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+      obj_tcertific->alv_mostrar( contenedor = 'CC_CERT').
+      CREATE OBJECT obj_tcert_man.
+      obj_tcert_man->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+      obj_tcert_man->tab = 'CERT'.
+      obj_tcert_man->alv_mostrar( contenedor = 'CC_CERT_CANT').
+
+      zfr_convenio-cert_num = obj_tcert_man->get_num( ).
+      zfr_convenio-cert_val = obj_tcert_man->get_val( ).
+
+    ELSEIF gv_type EQ '03'.
+      g_tabs_100-pressed_tab = c_tabs_100-tab3.
+
+      CREATE OBJECT obj_tvales.
+      obj_tvales->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+      obj_tvales->alv_mostrar( contenedor = 'CC_VALE').
+      CREATE OBJECT obj_tvale_man.
+      obj_tvale_man->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+      obj_tvale_man->tab = 'VALE'.
+      obj_tvale_man->alv_mostrar( contenedor = 'CC_VALE_CANT').
+
+      zfr_convenio-vale_num = obj_tvale_man->get_num( ).
+      zfr_convenio-vale_val = obj_tvale_man->get_val( ).
+    ENDIF.
+
+    CREATE OBJECT obj_benef.
+    obj_benef->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+    obj_benef->alv_mostrar( contenedor = 'CC_CONSULTA').
+
+    CREATE OBJECT obj_tiendas.
+    obj_tiendas->set_data( folio = zfr_convenio-folio gjahr = zfr_convenio-gjahr ).
+    obj_tiendas->tienda = zfr_conva-werks.
+
+  ENDMETHOD.
+
+  METHOD initialize.
+
+    DATA: it_rela TYPE STANDARD TABLE OF zfr_convenio.
+
+    SELECT SINGLE * FROM zfr_convenio INTO zfr_convenio
+      WHERE folio EQ p_folio
+        AND gjahr EQ p_gjahr
+        AND cert_ext NE 'X'.
+
+    gv_folio = zfr_convenio-folio.
+    gv_convenio = zfr_convenio-convenio.
+    gv_convgjhr = zfr_convenio-gjahr.
+    gv_type = zfr_convenio-type.
+
+    IF zfr_convenio-convenio IS NOT INITIAL.
+      SELECT SINGLE * FROM zfr_convenio INTO zfr_convenio
+        WHERE folio EQ zfr_convenio-convenio
+          AND gjahr EQ zfr_convenio-convgjhr.
+    ENDIF.
+    IF sy-subrc NE 0.
+      MESSAGE e104 WITH zfr_convenio-convenio.
+    ELSE.
+
+      SELECT * FROM zfr_convenio INTO TABLE it_rela
+        WHERE convenio EQ zfr_convenio-folio
+          AND convgjhr EQ zfr_convenio-gjahr.
+      IF sy-subrc EQ 0.
+        DATA: wa_rela TYPE zfr_convenio.
+        READ TABLE it_rela INTO wa_rela INDEX 1.
+        IF sy-subrc EQ 0.
+          gv_type = wa_rela-type.
+        ENDIF.
+      ENDIF.
+
+      SELECT SINGLE werks FROM zfr_conva
+        INTO zfr_conva-werks
+        WHERE folio EQ zfr_convenio-folio
+          AND gjahr EQ zfr_convenio-gjahr.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD update.
+    DATA: ls_conv TYPE zfr_convenio.
+    SELECT SINGLE * FROM zfr_convenio
+       INTO ls_conv
+      WHERE folio EQ zfr_convenio-folio
+        AND gjahr EQ zfr_convenio-gjahr.
+    IF sy-subrc EQ 0.
+      IF NOT ( sy-datum GE ls_conv-datab AND sy-datum LE ls_conv-datbi ).
+        MESSAGE w105 WITH ls_conv-datab ls_conv-datbi.
+      ENDIF.
+    ENDIF.
+    SUBMIT zfrsd_convenios_modificar
+      WITH p_folio EQ zfr_convenio-folio
+      WITH p_gjahr EQ zfr_convenio-gjahr
+      AND RETURN.
+  ENDMETHOD.
+ENDCLASS.

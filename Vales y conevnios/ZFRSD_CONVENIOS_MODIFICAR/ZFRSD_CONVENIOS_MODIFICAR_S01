@@ -1,0 +1,8 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_MODIFICAR_S01
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_folio LIKE zfr_convenio-folio OBLIGATORY,
+            p_gjahr LIKE zfr_convenio-gjahr OBLIGATORY DEFAULT sy-datum+0(4).
+SELECTION-SCREEN END OF BLOCK b1.

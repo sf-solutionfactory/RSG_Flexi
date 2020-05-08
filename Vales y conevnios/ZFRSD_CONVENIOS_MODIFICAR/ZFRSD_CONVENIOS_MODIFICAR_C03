@@ -1,0 +1,273 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_MODIFICAR_C02
+*&---------------------------------------------------------------------*
+
+
+CLASS cls_cert DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_cert.
+
+    DATA: it_data          TYPE STANDARD TABLE OF ty_cert,
+          it_excel         TYPE STANDARD TABLE OF ty_excel,
+          ls_data_selected TYPE ty_cert,
+          desc_type        TYPE zfr_desctype,
+          edit             TYPE c.
+
+    METHODS:
+      set_data IMPORTING folio TYPE zfr_convfolio
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c,"Mostrar ALV
+      handle_toolbar REDEFINITION,
+      handle_user_command REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_cancel,
+      row_print,
+      data_makeup.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_cert IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD set_data.
+    SELECT * FROM zfr_convenio
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE convenio EQ folio
+        AND convgjhr EQ gjahr.
+
+    edit = abap_false.
+    data_makeup( ).
+  ENDMETHOD.                    "set_data
+
+  METHOD data_makeup.
+    FIELD-SYMBOLS: <ls_data> TYPE ty_cert.
+    DATA: lt_esta TYPE STANDARD TABLE OF zfr_convet,
+          ls_esta TYPE zfr_convet.
+
+    SELECT * FROM zfr_convet INTO TABLE lt_esta
+      WHERE spras EQ sy-langu.
+
+    LOOP AT it_data ASSIGNING <ls_data>.
+      READ TABLE lt_esta INTO ls_esta WITH KEY estatus = <ls_data>-estatus.
+      IF sy-subrc EQ 0.
+        <ls_data>-vtext = ls_esta-vtext.
+      ELSE.
+        <ls_data>-vtext = <ls_data>-estatus.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          container_name = contenedor.
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: ls_fcat  TYPE lvc_s_fcat,
+          lt_fcat  TYPE STANDARD TABLE OF lvc_s_fcat,
+          v_colpos TYPE i.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVENIO'
+*       I_CLIENT_NEVER_DISPLAY = abap_true
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    LOOP AT lt_fcat INTO ls_fcat.
+*      ls_fcat-col_opt = abap_true.
+      ls_fcat-edit = edit.
+      ls_fcat-lowercase = abap_true.
+
+      CASE ls_fcat-fieldname.
+        WHEN 'FOLIO'.
+          ls_fcat-outputlen  = 20.
+          ls_fcat-col_pos    = 2.
+          ls_fcat-key = abap_true.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'CERT_VAL'.
+          ls_fcat-outputlen  = 20.
+          ls_fcat-coltext    = TEXT-mon. "'Monto'.
+          ls_fcat-col_pos    = 3.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'ESTATUS'.
+*          ls_fcat-f4availabl = abap_true.
+          ls_fcat-fieldname = 'VTEXT'.
+          ls_fcat-ref_field = 'VTEXT'.
+          ls_fcat-ref_table = 'ZFR_CONVET'.
+          ls_fcat-outputlen  = 20.
+          ls_fcat-coltext    = TEXT-est. "'Estatus'.
+          ls_fcat-col_pos    = 4.
+          APPEND ls_fcat TO t_fcat.
+        WHEN OTHERS.
+      ENDCASE.
+      ADD 1 TO v_colpos.
+    ENDLOOP.
+  ENDMETHOD.                    "armar_fieldcat
+  METHOD handle_toolbar.
+    DATA:ls_toolbar     TYPE stb_button,
+         vl_index       TYPE i,
+         is_disabled(1) TYPE c.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'ADD_ROWS'.
+    ls_toolbar-quickinfo = 'Agregar certificados'.
+    ls_toolbar-icon = icon_insert_multiple_lines.
+    ls_toolbar-text = 'Agregar'.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 1.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'CANCEL'.
+    ls_toolbar-quickinfo = 'Cancelar'.
+    ls_toolbar-icon = icon_cancel.
+    ls_toolbar-text = 'Cancelar'.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 2.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'PRINT'.
+    ls_toolbar-quickinfo = 'Imprimir'.
+    ls_toolbar-icon = icon_print.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 3.
+
+  ENDMETHOD.                    "handle_toolbar
+  METHOD handle_user_command.
+*    IF edit IS NOT INITIAL.
+    CASE e_ucomm.
+      WHEN 'CANCEL'.
+        CALL METHOD row_cancel.
+      WHEN 'ADD_ROWS'.
+        CLEAR: zfr_convenio-cert_num,
+               zfr_convenio-cert_val,
+               zfr_convenio-cert_man.
+
+
+        CALL SCREEN 0210 STARTING AT 10 1.
+      WHEN 'PRINT'.
+        CALL METHOD row_print.
+    ENDCASE.
+*    ENDIF.
+  ENDMETHOD.                    "handle_user_command
+
+  METHOD row_cancel.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_cert,
+          ls_conv TYPE zfr_convenio.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        IF sy-subrc EQ 0 AND ls_data-estatus NE 'C' AND ls_data-estatus NE 'R'.
+          DATA: lv_conv TYPE REF TO cls_convenio.
+          CREATE OBJECT lv_conv.
+          ls_data-estatus = c_cancel.
+          ls_data-aedat = sy-datum.
+          ls_data-usnmm = sy-uname.
+          MOVE-CORRESPONDING ls_data TO ls_conv.
+          lv_conv->set_info( ls_conv ).
+          lv_conv->save_head( ).
+          DATA: ls_esta TYPE zfr_convet.
+
+          SELECT SINGLE * FROM zfr_convet INTO ls_esta
+            WHERE spras EQ sy-langu
+              AND estatus EQ c_cancel.
+          ls_data-vtext = ls_esta-vtext.
+
+          MODIFY it_data FROM ls_data  INDEX ls_row-row_id.
+        ENDIF.
+      ENDLOOP.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+
+  ENDMETHOD.                    "ROW_CANCEL
+
+  METHOD row_print.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_cert,
+          ls_conv TYPE zfr_convenio,
+          lt_conv TYPE STANDARD TABLE OF zfr_convenio.
+    DATA: lv_conv TYPE REF TO cls_convenio.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      CREATE OBJECT lv_conv.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        IF sy-subrc EQ 0.
+
+          MOVE-CORRESPONDING ls_data TO ls_conv.
+**          lv_conv->set_info( ls_conv ).
+          APPEND ls_conv TO lt_conv.
+
+          MODIFY it_data FROM ls_data  INDEX ls_row-row_id.
+        ENDIF.
+      ENDLOOP.
+      IF lt_conv IS NOT INITIAL.
+        lv_conv->set_rela( lt_conv ).
+        lv_conv->imprimir( ).
+      ENDIF.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+
+  ENDMETHOD.                    "ROW_PRINT
+
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

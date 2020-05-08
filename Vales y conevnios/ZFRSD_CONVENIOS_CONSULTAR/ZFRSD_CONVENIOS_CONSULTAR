@@ -1,0 +1,33 @@
+*&---------------------------------------------------------------------*
+*& Report ZFRSD_CONVENIOS_CREAR
+*----------------------------------------------------------------------*
+* Programa             : ZFRSD_CONVENIOS_CONSULTAR                     *
+* Descripción          : Ver vales y convenios                         *
+*                                                                      *
+* Programa STD Base    : N/A                                           *
+* Consultor Funcional  : Guillermo Ornelas                             *
+* Desarrollador        : Rogelio Sánchez    (HMEDINA)                  *
+* Diseñador Técnico    : Guillermo Ornelas                             *
+* Creation Date        : 09.08.2019                                    *
+* ID Componente        :                                               *
+*----------------------------------------------------------------------*
+
+REPORT zfrsd_convenios_consultar
+MESSAGE-ID zfr_convenios.
+
+INCLUDE zfrsd_convenios_consultar_top.    "Declaraciones
+INCLUDE zfrsd_convenios_consultar_s01.    "Pantalla de selección
+INCLUDE zfrsd_convenios_crear_c02.        "Clase convenio
+INCLUDE zfrsd_convenios_crear_c09.        "Certificados externos
+INCLUDE zfrsd_convenios_crear_c03.        "Importes manuales
+INCLUDE zfrsd_convenios_crear_c04.        "Tiendas
+INCLUDE zfrsd_convenios_consultar_c02.    "Beneficiarios
+INCLUDE zfrsd_convenios_consultar_c01.    "Main
+INCLUDE zfrsd_convenios_consultar_f01.    "Pantalla principal
+INCLUDE zfrsd_convenios_consultar_f02.    "Pantalla tiendas
+
+START-OF-SELECTION.
+
+  CREATE OBJECT obj_main.
+  obj_main->run( ).
+  CALL SCREEN 100.

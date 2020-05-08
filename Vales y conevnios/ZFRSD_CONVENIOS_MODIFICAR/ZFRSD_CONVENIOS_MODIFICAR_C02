@@ -1,0 +1,206 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_MODIFICAR_C02
+*&---------------------------------------------------------------------*
+
+
+CLASS cls_bene DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_bene.
+
+    DATA: it_data          TYPE STANDARD TABLE OF ty_bene,
+          it_excel         TYPE STANDARD TABLE OF ty_excel,
+          ls_data_selected TYPE ty_bene,
+          desc_type        TYPE zfr_desctype,
+          edit             TYPE c.
+
+    METHODS:
+      set_data IMPORTING folio TYPE zfr_convfolio
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c,      "Mostrar ALV
+      handle_toolbar REDEFINITION,
+      handle_user_command REDEFINITION
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION
+      .
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      row_reset.
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_bene IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD set_data.
+    SELECT * FROM zfr_convb
+      INTO CORRESPONDING FIELDS OF TABLE it_data
+      WHERE folio EQ folio
+        AND gjahr EQ gjahr
+        AND estatus NE abap_true.
+
+    edit = ''.
+  ENDMETHOD.                    "set_data
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: ls_fcat  TYPE lvc_s_fcat,
+          lt_fcat  TYPE STANDARD TABLE OF lvc_s_fcat,
+          v_colpos TYPE i.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVB'
+*       I_CLIENT_NEVER_DISPLAY = abap_true
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    LOOP AT lt_fcat INTO ls_fcat.
+      ls_fcat-col_opt = abap_true.
+      ls_fcat-edit = edit.
+      ls_fcat-lowercase = abap_true.
+
+      CASE ls_fcat-fieldname.
+        WHEN 'EMPLEADO'.
+          ls_fcat-col_pos    = 2.
+          ls_fcat-key = abap_true.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'NOMBRE'.
+          ls_fcat-f4availabl = abap_true..
+          ls_fcat-coltext    = TEXT-nmb. "'Nombre'.
+          ls_fcat-col_pos    = 3.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'EMPRESA'.
+          ls_fcat-f4availabl = abap_true.
+          ls_fcat-coltext    = TEXT-emp. "'Empresa'.
+          ls_fcat-col_pos    = 4.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'KUNNR'.
+          ls_fcat-f4availabl = abap_true.
+          ls_fcat-col_pos    = 5.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'EMAIL'.
+**          ls_fcat-f4availabl = 'X'.
+**          ls_fcat-coltext    = TEXT-emp. "Empresa
+          ls_fcat-col_pos    = 6.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'PHONE'.
+**          ls_fcat-f4availabl = 'X'.
+**          ls_fcat-coltext    = TEXT-emp. "Empresa
+          ls_fcat-col_pos    = 7.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'CPUDT'.
+          ls_fcat-col_pos    = 8.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'FECHAC'.
+          ls_fcat-col_pos    = 9.
+          APPEND ls_fcat TO t_fcat.
+        WHEN OTHERS.
+      ENDCASE.
+      ADD 1 TO v_colpos.
+    ENDLOOP.
+  ENDMETHOD.                    "armar_fieldcat
+  METHOD handle_toolbar.
+    DATA:ls_toolbar     TYPE stb_button,
+         vl_index       TYPE i,
+         is_disabled(1) TYPE c.
+
+    CLEAR ls_toolbar.
+    ls_toolbar-butn_type = c_button_normal.
+    ls_toolbar-function = 'RESET'.
+    ls_toolbar-quickinfo = 'Reiniciar conteo'.
+    ls_toolbar-icon = icon_release.
+    ls_toolbar-text = 'Reiniciar conteo'.
+    ls_toolbar-disabled = is_disabled.
+    INSERT ls_toolbar INTO e_object->mt_toolbar INDEX 2.
+
+  ENDMETHOD.                    "handle_toolbar
+  METHOD handle_user_command.
+    CASE e_ucomm.
+      WHEN 'RESET'.
+        CALL METHOD row_reset.
+    ENDCASE.
+  ENDMETHOD.                    "handle_user_command
+
+  METHOD row_reset.
+    DATA: lt_rows TYPE lvc_t_roid,
+          ls_row  TYPE lvc_s_roid,
+          ls_data TYPE ty_bene,
+          lt_temp TYPE STANDARD TABLE OF ty_bene,
+          ls_conv TYPE zfr_convenio,
+          ls_ban  TYPE c.
+
+    "Obtenemos lineas seleccionadas
+    CALL METHOD get_selected_rows
+      IMPORTING
+        pt_rows = lt_rows.
+    IF lt_rows IS INITIAL.
+      MESSAGE s001 DISPLAY LIKE 'E'.
+    ELSE.
+      "Marcamos como borradas las lineas seleccionadas
+      LOOP AT lt_rows INTO ls_row.
+        READ TABLE it_data INTO ls_data INDEX ls_row-row_id.
+        IF sy-subrc EQ 0.
+          MOVE-CORRESPONDING ls_data TO ls_conv.
+          ls_data-fechac = sy-datum.
+          ls_data-aedat = sy-datum.
+          ls_data-usnmm = sy-uname.
+          ls_data-estatus = 'R'.
+          APPEND ls_data TO lt_temp.
+
+          MODIFY it_data FROM ls_data  INDEX ls_row-row_id.
+        ENDIF.
+      ENDLOOP.
+
+      DATA: lv_conv TYPE REF TO cls_convenio.
+      CREATE OBJECT lv_conv.
+      lv_conv->set_info( ls_conv ).
+      lv_conv->copy_bene( lt_temp ).
+
+      ls_ban = lv_conv->save_bene( ).
+      IF ls_ban IS INITIAL.
+        MESSAGE s106.
+      ENDIF.
+
+      "Actualizamos ALV
+      CALL METHOD refresh.
+    ENDIF.
+
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

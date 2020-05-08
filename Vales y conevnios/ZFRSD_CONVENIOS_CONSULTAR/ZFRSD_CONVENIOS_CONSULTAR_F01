@@ -1,0 +1,249 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CREAR_F01
+*&---------------------------------------------------------------------*
+***************   PANTALLA PRINCIPAL ***********************************
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'ST100'.
+  SET TITLEBAR 'T100'.
+ENDMODULE.
+
+***&---------------------------------------------------------------------*
+***& Module START OUTPUT
+***&---------------------------------------------------------------------*
+***&
+***&---------------------------------------------------------------------*
+**MODULE start OUTPUT.
+**  IF obj_main IS NOT BOUND.
+**    CREATE OBJECT obj_main.
+**    obj_main->run( ).
+**  ENDIF.
+**ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module TIENDAS OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE tiendas OUTPUT.
+  zfr_conva-werks = obj_tiendas->tienda.
+
+  DATA: vl_num      TYPE i,
+        vl_iconname TYPE string.
+  DESCRIBE TABLE obj_tiendas->it_data LINES vl_num.
+
+  IF vl_num GT 1.
+    vl_iconname = 'ICON_DISPLAY_MORE'.
+  ELSE.
+    vl_iconname = 'ICON_ENTER_MORE'.
+  ENDIF.
+
+  CALL FUNCTION 'ICON_CREATE'
+    EXPORTING
+      name                  = vl_iconname
+    IMPORTING
+      result                = gv_btn_tienda
+    EXCEPTIONS
+      icon_not_found        = 1
+      outputfield_too_short = 2
+      OTHERS                = 3.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module SEL_TABS OUTPUT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+MODULE sel_tabs OUTPUT.
+  LOOP AT SCREEN.
+    IF gv_type = '01' OR gv_type = '02'.  "Ocultar vales
+      IF screen-name = 'TABS_100_TAB3'."Tab name
+        screen-active    = '0'.
+        screen-invisible = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDIF.
+    IF gv_type = '01' OR gv_type = '03'.  "Ocultar certificados
+      IF screen-name = 'TABS_100_TAB2'."Tab name
+        screen-active    = '0'.
+        screen-invisible = '1'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE gv_ok_code.
+    WHEN 'BACK' OR 'EXIT'.
+      LEAVE TO SCREEN 0.
+    WHEN 'CANCEL'.
+      LEAVE TO SCREEN 100.
+    WHEN 'BTN_CREA'.
+      CALL TRANSACTION 'BP'.
+    WHEN 'SEL_WERK'.
+      PERFORM f_tiendas.
+    WHEN 'CERT_SELMAN'.
+      PERFORM f_importe_manual_cert.
+    WHEN 'VALE_SELMAN'.
+      PERFORM f_importe_manual_vale.
+    WHEN 'NEW'.
+
+    WHEN 'EDIT'.
+      PERFORM f_editar.
+    WHEN OTHERS.
+
+  ENDCASE.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_KUNNR  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_kunnr INPUT.
+  IF zfr_convenio-kunnr IS NOT INITIAL.
+    SELECT SINGLE name1 FROM kna1
+       INTO kna1-name1
+       WHERE kunnr EQ zfr_convenio-kunnr.
+  ELSE.
+    CLEAR:kna1-name1.
+  ENDIF.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_TYPE  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_type INPUT.
+  obj_tconvenio->desc_type = zfr_convenio-desc_type.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  MODULE_FILE  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE module_file INPUT.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      file_name = rlgrap-filename
+    EXCEPTIONS
+      OTHERS    = 1.
+ENDMODULE.
+
+***************   PANTALLA PRINCIPAL ***********************************
+*&SPWIZARD: OUTPUT MODULE FOR TS 'TABS_100'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: SETS ACTIVE TAB
+MODULE tabs_100_active_tab_set OUTPUT.
+  tabs_100-activetab = g_tabs_100-pressed_tab.
+  CASE g_tabs_100-pressed_tab.
+    WHEN c_tabs_100-tab1.
+      g_tabs_100-subscreen = '0101'.
+    WHEN c_tabs_100-tab2.
+      g_tabs_100-subscreen = '0102'.
+    WHEN c_tabs_100-tab3.
+      g_tabs_100-subscreen = '0103'.
+    WHEN c_tabs_100-tab4.
+      g_tabs_100-subscreen = '0104'.
+    WHEN OTHERS.
+*&SPWIZARD:      DO NOTHING
+  ENDCASE.
+ENDMODULE.
+
+*&SPWIZARD: INPUT MODULE FOR TS 'TABS_100'. DO NOT CHANGE THIS LINE!
+*&SPWIZARD: GETS ACTIVE TAB
+MODULE tabs_100_active_tab_get INPUT.
+  gv_ok_code = sy-ucomm.
+  CASE gv_ok_code.
+    WHEN c_tabs_100-tab1.
+      g_tabs_100-pressed_tab = c_tabs_100-tab1.
+    WHEN c_tabs_100-tab2.
+      g_tabs_100-pressed_tab = c_tabs_100-tab2.
+    WHEN c_tabs_100-tab3.
+      g_tabs_100-pressed_tab = c_tabs_100-tab3.
+    WHEN c_tabs_100-tab4.
+      g_tabs_100-pressed_tab = c_tabs_100-tab4.
+    WHEN OTHERS.
+*&SPWIZARD:      DO NOTHING
+  ENDCASE.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*& Form F_TIENDAS
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_tiendas .
+  obj_tiendas->alv_mostrar( contenedor = 'CC_TIENDAS').
+  CALL SCREEN 0200 STARTING AT 50 1.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_IMPORTE_MANUAL_CERT
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_importe_manual_cert .
+  IF zfr_convenio-cert_man EQ abap_true.
+    IF obj_tcert_man IS NOT BOUND.
+    ELSE.
+      CLEAR obj_tcert_man->it_data.
+      CALL METHOD obj_tcert_man->refresh.
+    ENDIF.
+  ELSE.
+    IF obj_tcert_man IS BOUND.
+      CALL METHOD obj_tcert_man->destroy.
+      FREE obj_tcert_man.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_IMPORTE_MANUAL_VALE
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_importe_manual_vale .
+  IF zfr_convenio-vale_man EQ abap_true.
+    IF obj_tvale_man IS NOT BOUND.
+      CREATE OBJECT obj_tvale_man.
+      obj_tvale_man->get_data( ).
+      obj_tvale_man->tab = 'VALE'.
+      obj_tvale_man->alv_mostrar( contenedor = 'CC_VALE_CANT').
+    ELSE.
+      CLEAR obj_tvale_man->it_data.
+      CALL METHOD obj_tvale_man->refresh.
+    ENDIF.
+  ELSE.
+    IF obj_tvale_man IS BOUND.
+      CALL METHOD obj_tvale_man->destroy.
+      FREE obj_tvale_man.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form F_EDITAR
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_editar .
+  obj_main->update( ).
+ENDFORM.

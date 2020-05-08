@@ -1,0 +1,186 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFRSD_CONVENIOS_CONSULTAR_C02
+*&---------------------------------------------------------------------*
+
+CLASS cls_bene DEFINITION INHERITING FROM zfr_cl_sf_alv.
+  PUBLIC SECTION .
+    CLASS-METHODS create
+      RETURNING
+        VALUE(r_result) TYPE REF TO cls_bene.
+
+    DATA: it_data          TYPE STANDARD TABLE OF ty_bene,
+          ls_data_selected TYPE ty_bene,
+          desc_type        TYPE zfr_desctype,
+          edit             TYPE c.
+
+    METHODS:
+      get_data,                                     "Carga de datos
+      set_data IMPORTING folio TYPE zfr_convfolio
+                         gjahr TYPE gjahr,
+      alv_mostrar IMPORTING contenedor TYPE c,      "Mostrar ALV
+      destroy
+      .
+
+  PROTECTED SECTION.
+    METHODS:
+      armar_fieldcat REDEFINITION,
+      armar_layout REDEFINITION.
+
+  PRIVATE SECTION.
+    DATA: obj_cc_tabla TYPE REF TO cl_gui_container,
+          obj_cc_texto TYPE REF TO cl_gui_container,
+          obj_split_v  TYPE REF TO cl_gui_splitter_container.
+
+    METHODS:
+      data_select,
+      data_makeup
+      .
+ENDCLASS.                    "cls_cabecera DEFINITION
+
+CLASS cls_bene IMPLEMENTATION.
+  METHOD create.
+    CREATE OBJECT r_result.
+  ENDMETHOD.
+
+  METHOD get_data.
+    CLEAR it_data.
+    CALL METHOD data_select.
+    CALL METHOD data_makeup.
+    edit = 'X'.
+  ENDMETHOD.
+
+  METHOD set_data.
+    DATA: lt_temp TYPE STANDARD TABLE OF zfr_convenio,
+          ls_data TYPE zfr_convenio.
+
+    SELECT * FROM zfr_convenio INTO TABLE lt_temp
+      WHERE convenio EQ folio
+        AND convgjhr EQ gjahr.
+
+    SELECT * FROM zfr_convenio APPENDING TABLE lt_temp
+      WHERE folio EQ folio
+        AND gjahr EQ gjahr.
+
+    IF lt_temp IS NOT INITIAL.
+      SELECT * FROM zfr_convb
+        INTO CORRESPONDING FIELDS OF TABLE it_data
+        FOR ALL ENTRIES IN lt_temp
+        WHERE folio EQ lt_temp-folio
+          AND gjahr EQ lt_temp-gjahr.
+    ENDIF.
+
+    SORT it_data.
+
+    edit = ''.
+  ENDMETHOD.                    "set_data
+
+  METHOD data_select.
+    DO 1 TIMES.
+      APPEND ls_data_selected TO it_data.
+    ENDDO.
+  ENDMETHOD.                    "data_select
+
+  METHOD data_makeup.
+  ENDMETHOD.                    "data_makeup
+
+  METHOD alv_mostrar.
+    IF container IS INITIAL.
+      CREATE OBJECT container
+        EXPORTING
+          container_name = contenedor.
+
+    ENDIF.
+
+    CALL METHOD mostrar
+      EXPORTING
+        contenedor = container
+      CHANGING
+        t_datos    = it_data.
+  ENDMETHOD.                    "alv_mostrar
+
+  METHOD armar_layout.
+    CALL METHOD super->armar_layout.
+    t_layo-stylefname = 'CELLTAB'.
+  ENDMETHOD.                    "ARMAR_LAYOUT
+
+  METHOD armar_fieldcat.
+    DATA: ls_fcat  TYPE lvc_s_fcat,
+          lt_fcat  TYPE STANDARD TABLE OF lvc_s_fcat,
+          v_colpos TYPE i.
+
+**    CLEAR ls_fcat.
+**    ls_fcat-fieldname = 'ICON'.
+**    ls_fcat-col_pos = 0.
+**    ls_fcat-outputlen = 2.
+**    ls_fcat-edit = ''.
+**    ls_fcat-icon = 'X'.
+**    APPEND ls_fcat TO t_fcat.
+
+    CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+      EXPORTING
+*       I_BUFFER_ACTIVE        =
+        i_structure_name       = 'ZFR_CONVB'
+*       I_CLIENT_NEVER_DISPLAY = 'X'
+*       I_BYPASSING_BUFFER     =
+      CHANGING
+        ct_fieldcat            = lt_fcat
+      EXCEPTIONS
+        inconsistent_interface = 1
+        program_error          = 2
+        OTHERS                 = 3.
+
+    LOOP AT lt_fcat INTO ls_fcat.
+      ls_fcat-col_opt = abap_true.
+      ls_fcat-edit = edit.
+      ls_fcat-lowercase = 'X'.
+
+      CASE ls_fcat-fieldname.
+        WHEN 'FOLIO'.
+          ls_fcat-coltext    = TEXT-cup. "Número de cupón
+          ls_fcat-col_pos    = 1.
+          ls_fcat-key = 'X'.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'EMPLEADO'.
+          ls_fcat-col_pos    = 2.
+          ls_fcat-key = 'X'.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'NOMBRE'.
+          ls_fcat-f4availabl = 'X'.
+          ls_fcat-coltext    = TEXT-nmb. "Nombre
+          ls_fcat-col_pos    = 3.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'KUNNR'.
+          ls_fcat-f4availabl = 'X'.
+          ls_fcat-col_pos    = 4.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'EMPRESA'.
+          ls_fcat-f4availabl = 'X'.
+          ls_fcat-coltext    = TEXT-emp. "Empresa
+          ls_fcat-col_pos    = 5.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'EMAIL'.
+**          ls_fcat-f4availabl = 'X'.
+**          ls_fcat-coltext    = TEXT-emp. "Empresa
+          ls_fcat-col_pos    = 6.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'PHONE'.
+**          ls_fcat-f4availabl = 'X'.
+**          ls_fcat-coltext    = TEXT-emp. "Empresa
+          ls_fcat-col_pos    = 7.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'CPUDT'.
+          ls_fcat-col_pos = 8.
+          APPEND ls_fcat TO t_fcat.
+        WHEN 'FECHAC'.
+          ls_fcat-col_pos = 9.
+          APPEND ls_fcat TO t_fcat.
+        WHEN OTHERS.
+      ENDCASE.
+      ADD 1 TO v_colpos.
+    ENDLOOP.
+  ENDMETHOD.                    "armar_fieldcat
+
+  METHOD destroy.
+    CALL METHOD v_alv->free.
+  ENDMETHOD.
+ENDCLASS.                    "cls_cabecera IMPLEMENTATION

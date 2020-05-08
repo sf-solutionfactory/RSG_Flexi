@@ -1,0 +1,116 @@
+*&---------------------------------------------------------------------*
+*& Include ZFRSD_CONVENIOS_MODIFICAR_TOP            - Report ZFRSD_CONVENIOS_MODIFICAR
+*&---------------------------------------------------------------------*
+
+TABLES: rlgrap, zfr_convenio, kna1.
+
+"TIPOS
+TYPES: BEGIN OF ty_bene.
+    INCLUDE STRUCTURE zfr_convb.
+TYPES: icon    TYPE mepo1232-icon02,
+       celltab TYPE lvc_t_styl,
+       END OF ty_bene,
+
+       BEGIN OF ty_cond.
+    INCLUDE STRUCTURE zfr_convp.
+TYPES: icon    TYPE mepo1232-icon02,
+       celltab TYPE lvc_t_styl,
+       END OF ty_cond,
+
+       BEGIN OF ty_manu,
+         posnr(10)  TYPE c,
+         cert_num   TYPE zfr_certnum,
+         cert_val   TYPE wrbtr,
+         folio      TYPE zfr_convfolio,
+         cert_folio TYPE zfr_folioext,
+
+         icon       TYPE mepo1232-icon02,
+         celltab    TYPE lvc_t_styl,
+       END OF ty_manu,
+
+       BEGIN OF ty_cert.
+    INCLUDE STRUCTURE zfr_convenio.
+TYPES: icon    TYPE mepo1232-icon02,
+       vtext   TYPE vtext,
+       celltab TYPE lvc_t_styl,
+       END OF ty_cert,
+
+       BEGIN OF ty_certs,
+         folio   TYPE string,
+         cliente TYPE kunnr,
+       END OF ty_certs,
+
+       BEGIN OF ty_werk,
+         posnr   TYPE posnr,
+         werks   TYPE werks_d,
+
+         icon    TYPE mepo1232-icon02,
+         celltab TYPE lvc_t_styl,
+       END OF ty_werk,
+
+       BEGIN OF ty_vkorg,
+         posnr   TYPE posnr,
+         vkorg   TYPE vkorg,
+
+         icon    TYPE mepo1232-icon02,
+         celltab TYPE lvc_t_styl,
+       END OF ty_vkorg,
+
+       BEGIN OF ty_excel,
+         empleado TYPE string,
+         name     TYPE string,
+         empresa  TYPE string,
+         email    TYPE string,
+         phone    TYPE string,
+         borrar   TYPE c,
+       END OF ty_excel.
+
+
+"CONSTANTES
+CONSTANTS: c_green  TYPE mepo_status-icon01  VALUE '@5B@',
+           c_yellow TYPE mepo_status-icon01  VALUE '@5D@',
+           c_red    TYPE mepo_status-icon01  VALUE '@5C@',
+           c_delete TYPE mepo_status-icon01  VALUE '@11@',
+           c_cancel TYPE zfr_convestatus VALUE 'C'.
+
+
+"TABLAS INTERNAS
+DATA: it_ventas TYPE STANDARD TABLE OF ty_vkorg,
+      it_tpar   TYPE STANDARD TABLE OF tpar.
+
+
+"VARIABLES
+DATA: gv_line  TYPE i.
+DATA: gv_ok_code  LIKE sy-ucomm.
+DATA: gv_ok_codet LIKE sy-ucomm,
+      gv_print    TYPE c.
+
+DATA: gv_conv        TYPE zfr_convtype,
+      gv_cert        TYPE zfr_convtype,
+      gv_vale        TYPE zfr_convtype,
+      gv_vtweg       TYPE vtweg,
+      gv_spart       TYPE spart,
+      gv_custhityp   TYPE hityp_kh,
+      it_newbp       TYPE STANDARD TABLE OF tvarvc,
+      it_bupa        TYPE STANDARD TABLE OF tvarvc,
+      it_knvp        TYPE STANDARD TABLE OF tvarvc,
+      gv_cert_imp    TYPE wrbtr,
+      gv_certc_datab TYPE datum,
+      gv_certc_datbi TYPE datum,
+      gv_mess        TYPE string.
+
+"OBJETOS
+CLASS lcl_main DEFINITION DEFERRED.
+CLASS cls_bene DEFINITION DEFERRED.
+CLASS cls_cert DEFINITION DEFERRED.
+CLASS cls_vale DEFINITION DEFERRED.
+CLASS cls_certs DEFINITION DEFERRED.
+CLASS cls_manu DEFINITION DEFERRED.
+
+DATA: obj_main      TYPE REF TO lcl_main,
+      obj_benef     TYPE REF TO cls_bene,
+      obj_cert      TYPE REF TO cls_cert,
+      obj_vale      TYPE REF TO cls_vale,
+      obj_tcert_man TYPE REF TO cls_manu,
+      obj_certs     TYPE REF TO cls_certs,
+      obj_tvale_man TYPE REF TO cls_manu.

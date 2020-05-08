@@ -1,0 +1,94 @@
+
+**** Trace file opened at 2019-10-15 10:40:36.785883 UTC-05:00 (Hora estándar central (México))
+NW RFC Library: Kernel variant, Release 750 Patch Level 3, Compiled on Feb 18 2019 01:33:41
+ CPIC library: 753.2018.11.12 version 3, NI library: 40, Kernel Release: 753 Patch Level 400
+ Current working directory: C:\Users\SF\Documents\GitHub\RSG_Flexi\Vales y conevnios\ZFRSD_CONVENIOS_CREAR\Dynpro, Program: gneux
+ Hardware: PC with Windows NT 8x Intel 80686 (Mod 142 Step 10), Operating_system: Windows NT 10.0
+ Hostname: SF0028, IP address: 10.94.86.102, IPv6 address: fe80::4926:75d6:5ec2:9312
+
+2019-10-15 10:40:36.787135 [18556] >> Error entry
+	[Handle: 54010312	ConvID: 63795985	SysID: 	SysNr: 	Target: 	User: 	Codepage: 1100]
+	RfcCommunicationException: Key: RFC_COMMUNICATION_FAILURE, Code: RFC_COMMUNICATION_FAILURE, Message: 
+LOCATION    SAProuter 40.4 on 'w2k8solman'
+ERROR       w2k8solman: route permission denied
+            (dsl-189-162-167-249-dyn.prod-infinitum.com.mx to
+            192.168.43.7, sapgw00)
+TIME        Tue Oct 15 10:40:35 2019
+RELEASE     745
+COMPONENT   NI (network interface)
+VERSION     40
+RC          -94
+COUNTER     1210
+
+
+**** Trace file opened at 2019-10-15 10:53:09.919978 UTC-05:00 (Hora estándar central (México))
+NW RFC Library: Kernel variant, Release 750 Patch Level 3, Compiled on Feb 18 2019 01:33:41
+ CPIC library: 753.2018.11.12 version 3, NI library: 40, Kernel Release: 753 Patch Level 400
+ Current working directory: C:\Users\SF\Documents\GitHub\RSG_Flexi\Vales y conevnios\ZFRSD_CONVENIOS_CREAR\Dynpro, Program: gneux
+ Hardware: PC with Windows NT 8x Intel 80686 (Mod 142 Step 10), Operating_system: Windows NT 10.0
+ Hostname: SF0028, IP address: 10.94.86.102, IPv6 address: fe80::4926:75d6:5ec2:9312
+
+2019-10-15 10:53:09.920359 [10276] >> Error entry
+	[Handle: 52021096	ConvID: 68962258	SysID: 	SysNr: 	Target: 	User: 	Codepage: 1100]
+	RfcCommunicationException: Key: RFC_COMMUNICATION_FAILURE, Code: RFC_COMMUNICATION_FAILURE, Message: 
+LOCATION    SAProuter 40.4 on 'ns.flexi.com.mx'
+ERROR       service 'sapgw10' unknown
+TIME        Tue Oct 15 09:53:09 2019
+RELEASE     721
+COMPONENT   NI (network interface)
+VERSION     40
+RC          -91
+MODULE      niuxi.c
+LINE        1814
+DETAIL      NiPGetServByName: 'sapgw10' not found
+SYSTEM CALL getaddrinfo
+COUNTER     104172
+
+2019-10-15 13:09:01.141761 [10276] >> Error entry
+	[Handle: 52021096	ConvID: 77406228	SysID: 	SysNr: 	Target: 	User: 	Codepage: 1100]
+	RfcCommunicationException: Key: RFC_COMMUNICATION_FAILURE, Code: RFC_COMMUNICATION_FAILURE, Message: 
+LOCATION    SAProuter 40.4 on 'ns.flexi.com.mx'
+ERROR       service 'sapgw10' unknown
+TIME        Tue Oct 15 12:09:00 2019
+RELEASE     721
+COMPONENT   NI (network interface)
+VERSION     40
+RC          -91
+MODULE      niuxi.c
+LINE        1814
+DETAIL      NiPGetServByName: 'sapgw10' not found
+SYSTEM CALL getaddrinfo
+COUNTER     104409
+
+2019-10-15 13:14:40.814179 [10276] >> Error entry
+	[Handle: 52021096	ConvID: 77395004	SysID: 	SysNr: 	Target: 	User: 	Codepage: 1100]
+	RfcCommunicationException: Key: RFC_COMMUNICATION_FAILURE, Code: RFC_COMMUNICATION_FAILURE, Message: 
+LOCATION    SAProuter 40.4 on 'ns.flexi.com.mx'
+ERROR       service 'sapgw10' unknown
+TIME        Tue Oct 15 12:14:40 2019
+RELEASE     721
+COMPONENT   NI (network interface)
+VERSION     40
+RC          -91
+MODULE      niuxi.c
+LINE        1814
+DETAIL      NiPGetServByName: 'sapgw10' not found
+SYSTEM CALL getaddrinfo
+COUNTER     104417
+
+2019-10-15 13:21:59.383846 [10276] >> Error entry
+	[Handle: 52021096	ConvID: 77936059	SysID: 	SysNr: 	Target: 	User: 	Codepage: 1100]
+	RfcCommunicationException: Key: RFC_COMMUNICATION_FAILURE, Code: RFC_COMMUNICATION_FAILURE, Message: 
+LOCATION    SAProuter 40.4 on 'ns.flexi.com.mx'
+ERROR       service 'sapgw10' unknown
+TIME        Tue Oct 15 12:21:58 2019
+RELEASE     721
+COMPONENT   NI (network interface)
+VERSION     40
+RC          -91
+MODULE      niuxi.c
+LINE        1814
+DETAIL      NiPGetServByName: 'sapgw10' not found
+SYSTEM CALL getaddrinfo
+COUNTER     104429
+
